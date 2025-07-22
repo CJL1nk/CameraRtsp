@@ -381,6 +381,8 @@ class CameraServer(context: Context) {
     }
 
     private fun stopCamera() {
+        encoder?.signalEndOfInputStream()
+
         captureSession?.apply {
             stopRepeating()
             close() // Call onClosed
@@ -388,6 +390,7 @@ class CameraServer(context: Context) {
     }
 
     private fun cleanUpResource() {
+        isEncoderRunning = false
         encoder?.stop()
         encoder?.release()
         encoder = null
