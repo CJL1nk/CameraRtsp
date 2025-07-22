@@ -1,0 +1,11 @@
+[versions]
+agp = "8.8.0"
+kotlin = "1.9.24"
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+
+[libraries]
+androidx-annotation = { group = "androidx.annotation", name = "annotation", version = "1.9.1" }
+
