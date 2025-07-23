@@ -31,6 +31,7 @@ import android.util.Size
 import android.view.Surface
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class CameraServer(context: Context) {
 
@@ -42,12 +43,13 @@ class CameraServer(context: Context) {
 
     fun start() {
         startRecordCamera()
-//        startHost()
     }
 
     private fun startRecordCamera() {
-        val config = CameraConfig(cameraManager)
-        prepareCamera(config, cameraHandler)
+        cameraHandler.post {
+            val config = CameraConfig(cameraManager)
+            prepareCamera(config, cameraHandler)
+        }
     }
 
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -86,7 +88,9 @@ class CameraServer(context: Context) {
                 val recordSize = getRecordSize(sensorRect, sensorOrientation)
                 config.width = recordSize.width
                 config.height = recordSize.height
-                startRecording(camera, config)
+                encodeExecutor.submit {
+                    startRecording(camera, config)
+                }
             }
 
             private fun getRecordSize(sensorRect: Rect?, sensorOrientation: Int?): Size {
@@ -122,6 +126,8 @@ class CameraServer(context: Context) {
     private var captureSession: CameraCaptureSession? = null
 
     private val cameraExecutor = Executor { command -> command?.let { cameraHandler.post(it) } }
+    private val frameLock = Any()
+    private var isFrameAvailable = false
 
     fun startRecording(device: CameraDevice, config: CameraConfig) {
 
@@ -136,7 +142,12 @@ class CameraServer(context: Context) {
 
         val inputSurfaceTexture = setupGL(config)
         inputSurfaceTexture.setOnFrameAvailableListener {
-            drawFrame()
+            synchronized(frameLock) {
+                if (!isFrameAvailable) {
+                    isFrameAvailable = true
+                    (frameLock as Object).notifyAll()
+                }
+            }
         }
         val glSurface = Surface(inputSurfaceTexture)
         this.inputSurfaceTexture = inputSurfaceTexture
@@ -288,15 +299,6 @@ class CameraServer(context: Context) {
         return surfaceTexture
     }
 
-    private fun drawFrame() {
-        inputSurfaceTexture?.updateTexImage()
-
-        // For now, this function is a placeholder
-        // You can implement drawing to FBO using a full screen quad and fragment shader here
-        EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, inputSurfaceTexture?.timestamp!!)
-        EGL14.eglSwapBuffers(eglDisplay, eglSurface)
-    }
-
     private val captureStateCallback = object : CameraCaptureSession.StateCallback() {
         override fun onConfigured(session: CameraCaptureSession) {
             captureSession = session
@@ -310,6 +312,7 @@ class CameraServer(context: Context) {
                 quitSafely()
                 join()
             }
+            encodeExecutor.awaitTermination(1, TimeUnit.SECONDS)
         }
 
         override fun onConfigureFailed(session: CameraCaptureSession) { }
@@ -318,24 +321,52 @@ class CameraServer(context: Context) {
     private val encodeExecutor = Executors.newSingleThreadExecutor()
 
     private fun startProcessEncodedFrame() {
-        encodeExecutor.submit {
-            var completed: Boolean
-            do {
-                completed = processNextFrame()
-                if (Thread.interrupted()) {
-                    cleanUpResource()
-                    break
-                }
-            } while (!completed)
-
-            if (completed) {
-                cleanUpResource()
+        var completed: Boolean
+        do {
+            completed = processNextFrame()
+            if (Thread.interrupted()) {
+                break
             }
-        }
+        } while (!completed)
+        cleanUpResource()
     }
 
     private fun processNextFrame(): Boolean {
-        return processNextVideoFrame()
+        if (!isDrawFinish) {
+            isDrawFinish = drawFrame()
+        }
+        if (!isDequeFinish) {
+            isDequeFinish = processNextVideoFrame()
+        }
+        return isDrawFinish && isDequeFinish
+    }
+
+    private var isDrawFinish = false
+    private var isDequeFinish = false
+
+    private fun drawFrame(): Boolean {
+        if (isStopping) {
+            encoder?.signalEndOfInputStream()
+            return true
+        }
+
+        synchronized(frameLock) {
+            // Use "while" instead of "if"
+            // to avoid spurious wakeup
+            while (!isFrameAvailable) {
+                (frameLock as Object).wait()
+            }
+            isFrameAvailable = false
+        }
+
+        inputSurfaceTexture?.updateTexImage()
+
+        // For now, this function is a placeholder
+        // You can implement drawing to FBO using a full screen quad and fragment shader here
+        EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, inputSurfaceTexture?.timestamp!!)
+        EGL14.eglSwapBuffers(eglDisplay, eglSurface)
+
+        return false
     }
 
     private val encoderOutputBufferInfo = MediaCodec.BufferInfo()
@@ -380,12 +411,17 @@ class CameraServer(context: Context) {
         stopCamera()
     }
 
-    private fun stopCamera() {
-        encoder?.signalEndOfInputStream()
+    @Volatile
+    private var isStopping = false
 
-        captureSession?.apply {
-            stopRepeating()
-            close() // Call onClosed
+    private fun stopCamera() {
+        isStopping = true
+
+        cameraExecutor.execute {
+            captureSession?.apply {
+                stopRepeating()
+                close() // Call onClosed
+            }
         }
     }
 
