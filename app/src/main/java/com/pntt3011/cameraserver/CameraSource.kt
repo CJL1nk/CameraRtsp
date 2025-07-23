@@ -33,7 +33,6 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
-import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
 
 class CameraSource(context: Context) {
@@ -139,10 +138,12 @@ class CameraSource(context: Context) {
         isEncoderRunning = true
         eglSetup(outputSurface)
         makeCurrent()
+        frameTimeNano = (1_000_000_000f / config.frameRate).toLong()
 
         val inputSurfaceTexture = setupGL(config)
         inputSurfaceTexture.setOnFrameAvailableListener {
             synchronized(frameLock) {
+                pendingFrame += 1
                 if (!isFrameAvailable) {
                     isFrameAvailable = true
                     (frameLock as Object).notifyAll()
@@ -356,6 +357,9 @@ class CameraSource(context: Context) {
 
     private var isDrawFinish = false
     private var isDequeFinish = false
+    private var frameTimeNano = 0L
+    private var pendingFrame = 0
+    private var processingFrame = 0
 
     private fun drawFrame(): Boolean {
         if (isStopped) {
@@ -370,6 +374,7 @@ class CameraSource(context: Context) {
                 (frameLock as Object).wait()
             }
             isFrameAvailable = false
+            processingFrame = pendingFrame
         }
 
         inputSurfaceTexture?.updateTexImage()
@@ -399,7 +404,7 @@ class CameraSource(context: Context) {
 
         // For now, this function is a placeholder
         // You can implement drawing to FBO using a full screen quad and fragment shader here
-        EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, inputSurfaceTexture?.timestamp!!)
+        EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, (processingFrame - 1).coerceAtLeast(0) * frameTimeNano)
         EGL14.eglSwapBuffers(eglDisplay, eglSurface)
 
         return false
