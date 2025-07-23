@@ -29,6 +29,9 @@ import android.util.Log
 import android.util.Range
 import android.util.Size
 import android.view.Surface
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -47,34 +50,23 @@ class CameraServer(context: Context) {
 
     private fun startRecordCamera() {
         cameraHandler.post {
-            val config = CameraConfig(cameraManager)
+            val config = CameraConfig()
             prepareCamera(config, cameraHandler)
         }
     }
 
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
-    class CameraConfig(cameraManager: CameraManager) {
-        var cameraId: String? = null
-        init {
-            val cameraIds = cameraManager.cameraIdList
-            for (id in cameraIds) {
-                val characteristics = cameraManager.getCameraCharacteristics(id)
-                val lensFacing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                if (lensFacing == CameraCharacteristics.LENS_FACING_BACK) {
-                    cameraId = id
-                    break
-                }
-            }
-        }
-        val mimeType = "video/avc"
+    class CameraConfig {
+        var cameraId: String = "0"
+        val mimeType = "video/hevc"
         val frameRate = 24
         var width = 1280
         var height = 720
         val bitrate = 2_000_000
         val iFrameInterval = 5
-        val profile = 8
-        val level = 65536
+        val profile = 1
+        val level = 2097152
     }
 
     @SuppressLint("MissingPermission")
@@ -83,19 +75,21 @@ class CameraServer(context: Context) {
             override fun onOpened(camera: CameraDevice) {
                 val characteristics = cameraManager.getCameraCharacteristics(camera.id)
                 val sensorRect = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
-                val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)
 
-                val recordSize = getRecordSize(sensorRect, sensorOrientation)
+                val recordSize = getRecordSize(sensorRect)
                 config.width = recordSize.width
                 config.height = recordSize.height
                 encodeExecutor.submit {
-                    startRecording(camera, config)
+                    try {
+                        startRecording(camera, config)
+                    } catch (e: Exception) {
+                        Log.e("CameraServer", "Exception", e)
+                    }
                 }
             }
 
-            private fun getRecordSize(sensorRect: Rect?, sensorOrientation: Int?): Size {
+            private fun getRecordSize(sensorRect: Rect?): Size {
                 val aspectRatio = sensorRect?.let { it.height().toFloat() / it.width().toFloat() } ?: (3f / 4f)
-                val orientation = sensorOrientation ?: 0
 
                 val width = config.width
 
@@ -104,7 +98,7 @@ class CameraServer(context: Context) {
                 var height = (width * aspectRatio).toInt()
                 height -= height % 4
 
-                return if (orientation == 0 || orientation == 180) {
+                return if (width > height) { // Force landscape video
                     Size(width, height)
                 } else {
                     Size(height, width)
@@ -117,7 +111,7 @@ class CameraServer(context: Context) {
             override fun onError(camera: CameraDevice, error: Int) {
             }
         }
-        cameraManager.openCamera(config.cameraId!!, stateCallback, handler)
+        cameraManager.openCamera(config.cameraId, stateCallback, handler)
     }
 
     private var captureRequest: CaptureRequest? = null
@@ -128,6 +122,12 @@ class CameraServer(context: Context) {
     private val cameraExecutor = Executor { command -> command?.let { cameraHandler.post(it) } }
     private val frameLock = Any()
     private var isFrameAvailable = false
+
+    private var program = 0
+    private var aPosition = 0
+    private var aTexCoord = 0
+    private var uTexture = 0
+    private var uTransformMatrixLocation = 0
 
     fun startRecording(device: CameraDevice, config: CameraConfig) {
 
@@ -153,6 +153,21 @@ class CameraServer(context: Context) {
         this.inputSurfaceTexture = inputSurfaceTexture
         this.inputSurface = glSurface
         surfaces.add(glSurface)
+
+        vertexBuffer = ByteBuffer.allocateDirect(vertexData.size * 4)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+        vertexBuffer.put(vertexData).position(0)
+
+        program = createShaderProgram()
+        if (program == 0) {
+            releaseGlProgram()
+            throw RuntimeException("Could not create shader program")
+        }
+        aPosition = GLES31.glGetAttribLocation(program, "aPosition")
+        aTexCoord = GLES31.glGetAttribLocation(program, "aTexCoord")
+        uTexture = GLES31.glGetUniformLocation(program, "uTexture")
+        uTransformMatrixLocation = GLES31.glGetUniformLocation(program, "uTransformMatrix")
 
         captureRequest = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
             addTarget(glSurface)
@@ -236,7 +251,6 @@ class CameraServer(context: Context) {
             egl14ContextAttributes,
             0
         )
-        checkEglError("eglCreateContext")
         if (eglContext == null) {
             throw RuntimeException("null context")
         }
@@ -252,7 +266,6 @@ class CameraServer(context: Context) {
             surfaceAttribs,
             0
         )
-        checkEglError("eglCreateWindowSurface")
         if (eglSurface == null) {
             throw RuntimeException("surface was null")
         }
@@ -267,13 +280,6 @@ class CameraServer(context: Context) {
         }
     }
 
-    private fun checkEglError(message: String) {
-        var error: Int
-        if ((EGL14.eglGetError().also { error = it }) != EGL14.EGL_SUCCESS) {
-            throw RuntimeException(message + ": EGL error: 0x" + Integer.toHexString(error))
-        }
-    }
-
     private var oesTextureId = 0
     private var fboTextureId = 0
 
@@ -283,8 +289,13 @@ class CameraServer(context: Context) {
         GLES31.glGenTextures(1, tex, 0)
         oesTextureId = tex[0]
         GLES31.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTextureId)
+        GLES31.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES31.GL_TEXTURE_MIN_FILTER, GLES31.GL_LINEAR)
+        GLES31.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES31.GL_TEXTURE_MAG_FILTER, GLES31.GL_LINEAR)
+        GLES31.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES31.GL_TEXTURE_WRAP_S, GLES31.GL_CLAMP_TO_EDGE)
+        GLES31.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES31.GL_TEXTURE_WRAP_T, GLES31.GL_CLAMP_TO_EDGE)
 
         val surfaceTexture = SurfaceTexture(oesTextureId)
+        surfaceTexture.setDefaultBufferSize(config.width, config.height)
 
         // Create output texture
         GLES31.glGenTextures(1, tex, 0)
@@ -361,6 +372,29 @@ class CameraServer(context: Context) {
 
         inputSurfaceTexture?.updateTexImage()
 
+        val transformMatrix = FloatArray(16)
+        inputSurfaceTexture?.getTransformMatrix(transformMatrix)
+
+        GLES31.glClearColor(0f, 0f, 0f, 1f)
+        GLES31.glClear(GLES31.GL_COLOR_BUFFER_BIT)
+
+        GLES31.glUseProgram(program)
+
+        vertexBuffer.position(0)
+        GLES31.glVertexAttribPointer(aPosition, 2, GLES31.GL_FLOAT, false, 4 * 4, vertexBuffer)
+        GLES31.glEnableVertexAttribArray(aPosition)
+
+        vertexBuffer.position(2)
+        GLES31.glVertexAttribPointer(aTexCoord, 2, GLES31.GL_FLOAT, false, 4 * 4, vertexBuffer)
+        GLES31.glEnableVertexAttribArray(aTexCoord)
+
+        GLES31.glActiveTexture(GLES31.GL_TEXTURE0)
+        GLES31.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTextureId)
+        GLES31.glUniform1i(uTexture, 0)
+
+        GLES31.glUniformMatrix4fv(uTransformMatrixLocation, 1, false, transformMatrix, 0)
+        GLES31.glDrawArrays(GLES31.GL_TRIANGLE_STRIP, 0, 4)
+
         // For now, this function is a placeholder
         // You can implement drawing to FBO using a full screen quad and fragment shader here
         EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, inputSurfaceTexture?.timestamp!!)
@@ -390,14 +424,11 @@ class CameraServer(context: Context) {
                     ?: throw Exception("Encoder output buffer is null")
                 val bufferInfo = encoderOutputBufferInfo
                 if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                    Log.d("ABC", "processNextVideoFrame: End stream")
                     return true
                 }
                 if (bufferInfo.size > 0) {
                     encodedData.position(bufferInfo.offset)
                     encodedData.limit(bufferInfo.offset + bufferInfo.size)
-
-                    Log.d("ABC", "processNextVideoFrame: Encode ${bufferInfo.size}")
 
                     // Important: mark the buffer as processed
                     encoder.releaseOutputBuffer(outputIndex, false)
@@ -431,6 +462,8 @@ class CameraServer(context: Context) {
         encoder?.release()
         encoder = null
 
+        releaseGlProgram()
+
         if (eglDisplay !== EGL14.EGL_NO_DISPLAY) {
             EGL14.eglDestroySurface(eglDisplay, eglSurface)
             EGL14.eglDestroyContext(eglDisplay, eglContext)
@@ -448,5 +481,91 @@ class CameraServer(context: Context) {
         inputSurface = null
         inputSurfaceTexture?.release()
         inputSurfaceTexture = null
+    }
+
+    private val vertexData = floatArrayOf(
+        -1f, -1f,  0f, 0f,
+        1f, -1f,  1f, 0f,
+        -1f,  1f,  0f, 1f,
+        1f,  1f,  1f, 1f,
+    )
+    private lateinit var vertexBuffer: FloatBuffer
+
+    private fun loadShader(type: Int, source: String): Int {
+        val shader = GLES31.glCreateShader(type)
+        GLES31.glShaderSource(shader, source)
+        GLES31.glCompileShader(shader)
+        val compiled = IntArray(1)
+        GLES31.glGetShaderiv(shader, GLES31.GL_COMPILE_STATUS, compiled, 0)
+        if (compiled[0] == 0) {
+            val error = GLES31.glGetShaderInfoLog(shader)
+            GLES31.glDeleteShader(shader)
+            throw RuntimeException("Shader compilation failed: $error")
+        }
+        return shader
+    }
+
+    private var vertexShader = 0
+    private var fragmentShader = 0
+
+    private fun createShaderProgram(): Int {
+        vertexShader = loadShader(GLES31.GL_VERTEX_SHADER, DEFAULT_VERTEX_SHADER)
+        if (vertexShader == 0) {
+            throw RuntimeException("failed loading vertex shader")
+        }
+        fragmentShader = loadShader(GLES31.GL_FRAGMENT_SHADER, DEFAULT_FRAGMENT_SHADER)
+        if (fragmentShader == 0) {
+            throw RuntimeException("failed loading fragment shader")
+        }
+        val program = GLES31.glCreateProgram()
+        GLES31.glAttachShader(program, vertexShader)
+        GLES31.glAttachShader(program, fragmentShader)
+        GLES31.glLinkProgram(program)
+
+        val linked = IntArray(1)
+        GLES31.glGetProgramiv(program, GLES31.GL_LINK_STATUS, linked, 0)
+        if (linked[0] == 0) {
+            val error = GLES31.glGetProgramInfoLog(program)
+            GLES31.glDeleteProgram(program)
+            throw RuntimeException("Program link failed: $error")
+        }
+        return program
+    }
+
+    private fun releaseGlProgram() {
+        GLES31.glDeleteProgram(program)
+        GLES31.glDeleteShader(vertexShader)
+        GLES31.glDeleteShader(fragmentShader)
+        program = 0
+        vertexShader = 0
+        fragmentShader = 0
+    }
+
+
+    companion object {
+        const val DEFAULT_VERTEX_SHADER = "" +
+                "#version 300 es\n" +
+                "in vec4 aPosition;\n" +
+                "in vec2 aTexCoord;\n" +
+                "uniform mat4 uTransformMatrix;\n" +
+                "out vec2 vTexCoord;\n" +
+                "\n" +
+                "void main() {\n" +
+                "    gl_Position = aPosition;\n" +
+                "    vTexCoord = (uTransformMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;\n" +
+                "}\n"
+
+        const val DEFAULT_FRAGMENT_SHADER = "" +
+                "#version 300 es\n" +
+                "#extension GL_OES_EGL_image_external_essl3 : require\n" +
+                "precision mediump float;\n" +
+                "\n" +
+                "in vec2 vTexCoord;\n" +
+                "uniform samplerExternalOES uTexture;\n" +
+                "out vec4 fragColor;\n" +
+                "\n" +
+                "void main() {\n" +
+                "    fragColor = texture(uTexture, vTexCoord);\n" +
+                "}\n"
     }
 }

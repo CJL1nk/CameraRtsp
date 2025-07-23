@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.widget.Button
 
 class MainActivity : Activity() {
     private var server: CameraServer? = null
@@ -14,10 +15,17 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        if (allPermissionsGranted()) {
-            startServer()
-        } else {
-            requestPermissions(REQUIRED_PERMISSIONS, PERMISSIONS_REQUEST_CODE)
+        val button = findViewById<Button>(R.id.start_button)
+        button.setOnClickListener {
+            if (server == null) {
+                if (allPermissionsGranted()) {
+                    startServer()
+                } else {
+                    requestPermissions(REQUIRED_PERMISSIONS, PERMISSIONS_REQUEST_CODE)
+                }
+            } else {
+                stopServer()
+            }
         }
     }
 
@@ -32,10 +40,6 @@ class MainActivity : Activity() {
         assert(server == null) { "Old server must be cleared before starting new server" }
         server = CameraServer(baseContext)
         server?.start()
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            stopServer()
-        }, 10_000L)
     }
 
     override fun onRequestPermissionsResult(
