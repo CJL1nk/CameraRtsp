@@ -15,12 +15,17 @@ class CameraServer(context: Context) {
     private val cameraSource by lazy {
         CameraSource(context)
     }
+    private val audioSource by lazy {
+        AudioSource()
+    }
 
     fun start() {
+        audioSource.start()
         cameraSource.start(workerHandler)
     }
 
     fun stop() {
+        audioSource.stop()
         cameraSource.stop {
             workerThread.quitSafely()
             workerThread.join()
