@@ -7,12 +7,11 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaRecorder
-import android.os.Handler
 import android.util.Log
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-class AudioSource {
+class AudioSource(private val callback: SourceCallback) {
     private val sampleRate = 44100
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
@@ -22,6 +21,7 @@ class AudioSource {
     private val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat) * 2
     @Volatile
     private var isRecording = false
+
 
     fun start() {
         if (isRecording) return
@@ -97,12 +97,16 @@ class AudioSource {
                     val outputBuffer = codec.getOutputBuffer(outputIndex) ?: break
                     outputBuffer.position(bufferInfo.offset)
                     outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
+                    callback.frameAvailable(outputBuffer, bufferInfo)
                     codec.releaseOutputBuffer(outputIndex, false)
                     outputIndex = codec.dequeueOutputBuffer(bufferInfo, 0)
                 } else {
                     finished = true
                     break
                 }
+            }
+            if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                callback.prepare(codec.outputFormat)
             }
         }
 
@@ -112,17 +116,13 @@ class AudioSource {
         audioRecord.stop()
         audioRecord.release()
 
-        closedHandler?.post { onClosed?.invoke() }
+        callback.close()
+        Log.d("CleanUp", "gracefully clean up audio")
     }
 
 
-    private var onClosed: (() -> Unit)? = null
-    private var closedHandler: Handler? = null
-
-    fun stop(handler: Handler, callback: (() -> Unit)?) {
+    fun stop() {
         if (!isRecording) return
-        onClosed = callback
-        closedHandler = handler
         isRecording = false
         encodeExecutor?.awaitTermination(1, TimeUnit.SECONDS)
     }

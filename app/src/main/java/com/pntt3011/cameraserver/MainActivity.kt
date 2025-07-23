@@ -7,7 +7,7 @@ import android.os.Bundle
 import android.widget.Button
 
 class MainActivity : Activity() {
-    private var server: CameraServer? = null
+    private var server: Server? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,7 +40,7 @@ class MainActivity : Activity() {
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             return
         }
-        server = CameraServer(baseContext)
+        server = Server(baseContext)
         server?.start()
     }
 

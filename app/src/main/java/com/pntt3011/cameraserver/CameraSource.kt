@@ -23,7 +23,6 @@ import android.opengl.EGLExt.EGL_RECORDABLE_ANDROID
 import android.opengl.EGLSurface
 import android.opengl.GLES11Ext
 import android.opengl.GLES31
-import android.os.Handler
 import android.util.Log
 import android.util.Range
 import android.util.Size
@@ -35,23 +34,23 @@ import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-class CameraSource(context: Context) {
+class CameraSource(context: Context, callback: SourceCallback) {
 
-    private var cameraHandler: Handler? = null
     private var encoder: MediaCodec? = null
     private var isEncoderRunning = false
 
+    private val cameraCallback = callback
+    private val cameraHandler get() = cameraCallback.handler
+    private val cameraExecutor = Executor { command -> command?.let { cameraHandler.post(it) } }
 
-    fun start(handler: Handler) {
+    fun start() {
         if (isStopped) return
-        cameraHandler = handler.also {
-            startRecordCamera(it)
-        }
+        startRecordCamera()
     }
 
-    private fun startRecordCamera(handler: Handler) {
+    private fun startRecordCamera() {
         val config = CameraConfig()
-        prepareCamera(config, handler)
+        prepareCamera(config)
     }
 
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -69,7 +68,7 @@ class CameraSource(context: Context) {
     }
 
     @SuppressLint("MissingPermission")
-    private fun prepareCamera(config: CameraConfig, handler: Handler) {
+    private fun prepareCamera(config: CameraConfig) {
         val stateCallback = object : CameraDevice.StateCallback() {
             override fun onOpened(camera: CameraDevice) {
                 val characteristics = cameraManager.getCameraCharacteristics(camera.id)
@@ -110,7 +109,7 @@ class CameraSource(context: Context) {
             override fun onError(camera: CameraDevice, error: Int) {
             }
         }
-        cameraManager.openCamera(config.cameraId, stateCallback, handler)
+        cameraManager.openCamera(config.cameraId, stateCallback, cameraHandler)
     }
 
     private var captureRequest: CaptureRequest? = null
@@ -118,7 +117,6 @@ class CameraSource(context: Context) {
     private var inputSurface: Surface? = null
     private var captureSession: CameraCaptureSession? = null
 
-    private val cameraExecutor = Executor { command -> command?.let { cameraHandler?.post(it) } }
     private val frameLock = Any()
     private var isFrameAvailable = false
 
@@ -320,7 +318,7 @@ class CameraSource(context: Context) {
         }
 
         override fun onClosed(session: CameraCaptureSession) {
-            closedHandler?.post { onCameraClosed?.invoke() }
+            cameraCallback.close()
             encodeExecutor.awaitTermination(1, TimeUnit.SECONDS)
         }
 
@@ -424,6 +422,8 @@ class CameraSource(context: Context) {
             outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
             }
             outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                val newFormat = encoder.outputFormat
+                cameraCallback.prepare(newFormat)
             }
             outputIndex >= 0 -> {
                 val encodedData = encoder.getOutputBuffer(outputIndex)
@@ -435,7 +435,7 @@ class CameraSource(context: Context) {
                 if (bufferInfo.size > 0) {
                     encodedData.position(bufferInfo.offset)
                     encodedData.limit(bufferInfo.offset + bufferInfo.size)
-
+                    cameraCallback.frameAvailable(encodedData, bufferInfo)
                     // Important: mark the buffer as processed
                     encoder.releaseOutputBuffer(outputIndex, false)
                 }
@@ -444,13 +444,8 @@ class CameraSource(context: Context) {
         return false
     }
 
-    private var onCameraClosed: (() -> Unit)? = null
-    private var closedHandler: Handler? = null
-
-    fun stop(handler: Handler, callback: (() -> Unit)?) {
+    fun stop() {
         if (isStopped) return
-        onCameraClosed = callback
-        closedHandler = handler
         isStopped = true
         stopCamera()
     }
@@ -459,12 +454,10 @@ class CameraSource(context: Context) {
     private var isStopped = false
 
     private fun stopCamera() {
-        cameraExecutor.execute {
             captureSession?.apply {
                 stopRepeating()
                 close() // Call onClosed
             }
-        }
     }
 
     private fun cleanUpResource() {
@@ -492,6 +485,8 @@ class CameraSource(context: Context) {
         inputSurface = null
         inputSurfaceTexture?.release()
         inputSurfaceTexture = null
+
+        Log.d("CleanUp", "gracefully clean up video")
     }
 
     private val vertexData = floatArrayOf(
