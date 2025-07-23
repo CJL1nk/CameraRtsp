@@ -25,10 +25,27 @@ class CameraServer(context: Context) {
     }
 
     fun stop() {
-        audioSource.stop()
-        cameraSource.stop {
-            workerThread.quitSafely()
-            workerThread.join()
+        audioSource.stop(workerHandler) {
+            checkStop(false)
         }
+        cameraSource.stop(workerHandler) {
+            checkStop(true)
+        }
+    }
+
+    private var stoppedVideo = false
+    private var stoppedAudio = false
+
+    private fun checkStop(isVideo: Boolean) {
+        stoppedVideo = stoppedVideo || isVideo
+        stoppedAudio = stoppedAudio || !isVideo
+        if (stoppedVideo && stoppedAudio) {
+            cleanUp()
+        }
+    }
+
+    private fun cleanUp() {
+        workerThread.quitSafely()
+        workerThread.join()
     }
 }

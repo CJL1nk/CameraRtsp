@@ -7,8 +7,10 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaRecorder
+import android.os.Handler
 import android.util.Log
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class AudioSource {
     private val sampleRate = 44100
@@ -109,10 +111,19 @@ class AudioSource {
 
         audioRecord.stop()
         audioRecord.release()
+
+        closedHandler?.post { onClosed?.invoke() }
     }
 
 
-    fun stop() {
+    private var onClosed: (() -> Unit)? = null
+    private var closedHandler: Handler? = null
+
+    fun stop(handler: Handler, callback: (() -> Unit)?) {
+        if (!isRecording) return
+        onClosed = callback
+        closedHandler = handler
         isRecording = false
+        encodeExecutor?.awaitTermination(1, TimeUnit.SECONDS)
     }
 }
