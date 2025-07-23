@@ -24,7 +24,6 @@ import android.opengl.EGLSurface
 import android.opengl.GLES11Ext
 import android.opengl.GLES31
 import android.os.Handler
-import android.os.HandlerThread
 import android.util.Log
 import android.util.Range
 import android.util.Size
@@ -38,21 +37,21 @@ import java.util.concurrent.TimeUnit
 
 class CameraSource(context: Context) {
 
-    private val cameraThread = HandlerThread("CameraThread").apply { start() }
-    private val cameraHandler = Handler(cameraThread.looper)
+    private var cameraHandler: Handler? = null
     private var encoder: MediaCodec? = null
     private var isEncoderRunning = false
 
 
-    fun start() {
-        startRecordCamera()
+    fun start(handler: Handler) {
+        if (isStopped) return
+        cameraHandler = handler.also {
+            startRecordCamera(it)
+        }
     }
 
-    private fun startRecordCamera() {
-        cameraHandler.post {
-            val config = CameraConfig()
-            prepareCamera(config, cameraHandler)
-        }
+    private fun startRecordCamera(handler: Handler) {
+        val config = CameraConfig()
+        prepareCamera(config, handler)
     }
 
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -119,7 +118,7 @@ class CameraSource(context: Context) {
     private var inputSurface: Surface? = null
     private var captureSession: CameraCaptureSession? = null
 
-    private val cameraExecutor = Executor { command -> command?.let { cameraHandler.post(it) } }
+    private val cameraExecutor = Executor { command -> command?.let { cameraHandler?.post(it) } }
     private val frameLock = Any()
     private var isFrameAvailable = false
 
@@ -319,10 +318,7 @@ class CameraSource(context: Context) {
         }
 
         override fun onClosed(session: CameraCaptureSession) {
-            cameraThread.apply {
-                quitSafely()
-                join()
-            }
+            onCameraClosed?.invoke()
             encodeExecutor.awaitTermination(1, TimeUnit.SECONDS)
         }
 
@@ -356,7 +352,7 @@ class CameraSource(context: Context) {
     private var isDequeFinish = false
 
     private fun drawFrame(): Boolean {
-        if (isStopping) {
+        if (isStopped) {
             encoder?.signalEndOfInputStream()
             return true
         }
@@ -437,15 +433,19 @@ class CameraSource(context: Context) {
         return false
     }
 
-    fun stop() {
+    private var onCameraClosed: (() -> Unit)? = null
+
+    fun stop(callback: (() -> Unit)?) {
+        if (isStopped) return
+        onCameraClosed = callback
         stopCamera()
     }
 
     @Volatile
-    private var isStopping = false
+    private var isStopped = false
 
     private fun stopCamera() {
-        isStopping = true
+        isStopped = true
 
         cameraExecutor.execute {
             captureSession?.apply {
