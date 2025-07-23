@@ -33,6 +33,7 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
 
 class CameraSource(context: Context) {
@@ -325,7 +326,12 @@ class CameraSource(context: Context) {
         override fun onConfigureFailed(session: CameraCaptureSession) { }
     }
 
-    private val encodeExecutor = Executors.newSingleThreadExecutor()
+    private val encodeExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(
+            runnable,
+            "VideoEncoderThread"
+        )
+    }
 
     private fun startProcessEncodedFrame() {
         var completed: Boolean
