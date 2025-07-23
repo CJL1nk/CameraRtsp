@@ -4,8 +4,6 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.widget.Button
 
 class MainActivity : Activity() {
@@ -20,11 +18,13 @@ class MainActivity : Activity() {
             if (server == null) {
                 if (allPermissionsGranted()) {
                     startServer()
+                    button.text = "STOP"
                 } else {
                     requestPermissions(REQUIRED_PERMISSIONS, PERMISSIONS_REQUEST_CODE)
                 }
             } else {
                 stopServer()
+                button.text = "START"
             }
         }
     }
@@ -34,27 +34,14 @@ class MainActivity : Activity() {
     }
 
     private fun startServer() {
+        if (server != null) {
+            return
+        }
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             return
         }
-        assert(server == null) { "Old server must be cleared before starting new server" }
         server = CameraServer(baseContext)
         server?.start()
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSIONS_REQUEST_CODE) {
-            if (allPermissionsGranted()) {
-                startServer()
-            } else {
-                finish()
-            }
-        }
     }
 
     override fun onDestroy() {
