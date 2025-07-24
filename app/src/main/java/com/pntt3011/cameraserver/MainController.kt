@@ -9,7 +9,7 @@ import android.os.Looper
 import android.util.Log
 import java.nio.ByteBuffer
 
-class Server(context: Context) {
+class MainController(context: Context) {
     private val mainHandler by lazy {
         Handler(Looper.getMainLooper())
     }

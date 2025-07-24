@@ -8,7 +8,7 @@ import android.view.WindowManager
 import android.widget.Button
 
 class MainActivity : Activity() {
-    private var server: Server? = null
+    private var mainController: MainController? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -17,7 +17,7 @@ class MainActivity : Activity() {
 
         val button = findViewById<Button>(R.id.start_button)
         button.setOnClickListener {
-            if (server == null) {
+            if (mainController == null) {
                 if (allPermissionsGranted()) {
                     startServer()
                     button.text = "STOP"
@@ -36,14 +36,14 @@ class MainActivity : Activity() {
     }
 
     private fun startServer() {
-        if (server != null) {
+        if (mainController != null) {
             return
         }
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             return
         }
-        server = Server(baseContext)
-        server?.start()
+        mainController = MainController(baseContext)
+        mainController?.start()
     }
 
     override fun onDestroy() {
@@ -53,8 +53,8 @@ class MainActivity : Activity() {
     }
 
     private fun stopServer() {
-        server?.stop()
-        server = null
+        mainController?.stop()
+        mainController = null
     }
 
     companion object {
