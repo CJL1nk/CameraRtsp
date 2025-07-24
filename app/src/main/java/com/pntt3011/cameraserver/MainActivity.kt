@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Button
 
 class MainActivity : Activity() {
@@ -12,6 +13,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val button = findViewById<Button>(R.id.start_button)
         button.setOnClickListener {
@@ -47,6 +49,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         stopServer()
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     private fun stopServer() {

@@ -18,7 +18,8 @@ class AudioSource(private val callback: SourceCallback) {
     private val bitrate = 64000
     private val channelCount = 1
 
-    private val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat) * 2
+    // The doc tells that we should choose a higher value
+    private val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat) * 4
     @Volatile
     private var isRecording = false
 
@@ -52,6 +53,8 @@ class AudioSource(private val callback: SourceCallback) {
             bufferSize
         )
 
+        audioRecord.startRecording()
+
         val format = MediaFormat.createAudioFormat("audio/mp4a-latm", sampleRate, channelCount)
         format.setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
         format.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
@@ -61,52 +64,51 @@ class AudioSource(private val callback: SourceCallback) {
         codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         codec.start()
 
-        val buffer = ByteArray(bufferSize)
-
-        audioRecord.startRecording()
         val bufferInfo = MediaCodec.BufferInfo()
 
         var finished = false
-
         while (!finished) {
-            val inputIndex = codec.dequeueInputBuffer(0)
-
             // Enqueue
+            val inputIndex = codec.dequeueInputBuffer(0)
             if (inputIndex >= 0) {
                 if (isRecording) {
-                    var readBytes = 0
-                    val inputBuffer = codec.getInputBuffer(inputIndex)
-                    if (inputBuffer != null) {
-                        inputBuffer.clear()
+                    // Queue record data
+                    codec.getInputBuffer(inputIndex)?.let { inputBuffer ->
                         val targetSize = bufferSize.coerceAtMost(inputBuffer.capacity())
-                        readBytes = audioRecord.read(inputBuffer, targetSize)
-                    }
-                    if (inputBuffer != null && readBytes > 0) {
-                        inputBuffer.put(buffer, 0, readBytes)
-                        codec.queueInputBuffer(inputIndex, 0, readBytes, System.nanoTime() / 1000, 0)
+                        val readBytes = audioRecord.read(inputBuffer, targetSize)
+                        if (readBytes > 0) {
+                            codec.queueInputBuffer(inputIndex, 0, readBytes, System.nanoTime() / 1000, 0)
+                        }
                     }
                 } else {
-                    codec.queueInputBuffer(inputIndex, 0, 0, System.nanoTime() / 1000, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    // Queue EOS
+                    codec.queueInputBuffer(inputIndex, 0, 0, -1, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                 }
             }
 
             // Dequeue
-            var outputIndex = codec.dequeueOutputBuffer(bufferInfo, 0)
-            while (outputIndex >= 0) {
-                if (bufferInfo.flags != MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
-                    val outputBuffer = codec.getOutputBuffer(outputIndex) ?: break
-                    outputBuffer.position(bufferInfo.offset)
-                    outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                    callback.frameAvailable(outputBuffer, bufferInfo)
-                    codec.releaseOutputBuffer(outputIndex, false)
-                    outputIndex = codec.dequeueOutputBuffer(bufferInfo, 0)
-                } else {
-                    finished = true
-                    break
+            while (true) {
+                val outputIndex = codec.dequeueOutputBuffer(bufferInfo, 0)
+                when {
+                    outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        callback.handler.post {
+                            callback.onPrepared(codec.outputFormat)
+                        }
+                    }
+                    outputIndex >= 0 -> {
+                        val outputBuffer = codec.getOutputBuffer(outputIndex) ?: break
+                        outputBuffer.position(bufferInfo.offset)
+                        outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
+                        callback.onFrameAvailable(outputBuffer, bufferInfo)
+                        codec.releaseOutputBuffer(outputIndex, false)
+
+                        if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                            finished = true
+                            break
+                        }
+                    }
+                    else -> break
                 }
-            }
-            if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                callback.prepare(codec.outputFormat)
             }
         }
 
@@ -116,7 +118,6 @@ class AudioSource(private val callback: SourceCallback) {
         audioRecord.stop()
         audioRecord.release()
 
-        callback.close()
         Log.d("CleanUp", "gracefully clean up audio")
     }
 
@@ -124,6 +125,9 @@ class AudioSource(private val callback: SourceCallback) {
     fun stop() {
         if (!isRecording) return
         isRecording = false
-        encodeExecutor?.awaitTermination(1, TimeUnit.SECONDS)
+        callback.handler.post {
+            encodeExecutor?.awaitTermination(1, TimeUnit.SECONDS)
+            callback.onClosed()
+        }
     }
 }

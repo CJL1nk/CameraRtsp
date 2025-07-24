@@ -2,10 +2,8 @@ package com.pntt3011.cameraserver
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Rect
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
-import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
@@ -25,7 +23,6 @@ import android.opengl.GLES11Ext
 import android.opengl.GLES31
 import android.util.Log
 import android.util.Range
-import android.util.Size
 import android.view.Surface
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -45,7 +42,9 @@ class CameraSource(context: Context, callback: SourceCallback) {
 
     fun start() {
         if (isStopped) return
-        startRecordCamera()
+        cameraHandler.post {
+            startRecordCamera()
+        }
     }
 
     private fun startRecordCamera() {
@@ -59,8 +58,8 @@ class CameraSource(context: Context, callback: SourceCallback) {
         var cameraId: String = "0"
         val mimeType = "video/hevc"
         val frameRate = 24
-        var width = 1280
-        var height = 720
+        var width = 1088
+        var height = 1088
         val bitrate = 2_000_000
         val iFrameInterval = 5
         val profile = 1
@@ -71,35 +70,12 @@ class CameraSource(context: Context, callback: SourceCallback) {
     private fun prepareCamera(config: CameraConfig) {
         val stateCallback = object : CameraDevice.StateCallback() {
             override fun onOpened(camera: CameraDevice) {
-                val characteristics = cameraManager.getCameraCharacteristics(camera.id)
-                val sensorRect = characteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
-
-                val recordSize = getRecordSize(sensorRect)
-                config.width = recordSize.width
-                config.height = recordSize.height
                 encodeExecutor.submit {
                     try {
                         startRecording(camera, config)
                     } catch (e: Exception) {
                         Log.e("CameraServer", "Exception", e)
                     }
-                }
-            }
-
-            private fun getRecordSize(sensorRect: Rect?): Size {
-                val aspectRatio = sensorRect?.let { it.height().toFloat() / it.width().toFloat() } ?: (3f / 4f)
-
-                val width = config.width
-
-                // Compute a suitable height of Surface, ensuring that we always generate something that is
-                // dividable by 4. This ensures a supported alignment.
-                var height = (width * aspectRatio).toInt()
-                height -= height % 4
-
-                return if (width > height) { // Force landscape video
-                    Size(width, height)
-                } else {
-                    Size(height, width)
                 }
             }
 
@@ -136,12 +112,11 @@ class CameraSource(context: Context, callback: SourceCallback) {
         isEncoderRunning = true
         eglSetup(outputSurface)
         makeCurrent()
-        frameTimeNano = (1_000_000_000f / config.frameRate).toLong()
 
         val inputSurfaceTexture = setupGL(config)
         inputSurfaceTexture.setOnFrameAvailableListener {
             synchronized(frameLock) {
-                pendingFrame += 1
+                frameTimeNano = System.nanoTime()
                 if (!isFrameAvailable) {
                     isFrameAvailable = true
                     (frameLock as Object).notifyAll()
@@ -300,11 +275,6 @@ class CameraSource(context: Context, callback: SourceCallback) {
         GLES31.glGenTextures(1, tex, 0)
         fboTextureId = tex[0]
         GLES31.glBindTexture(GLES31.GL_TEXTURE_2D, fboTextureId)
-        GLES31.glTexImage2D(
-            GLES31.GL_TEXTURE_2D, 0, GLES31.GL_RGBA,
-            config.width, config.height, 0, GLES31.GL_RGBA,
-            GLES31.GL_UNSIGNED_BYTE, null
-        )
 
         return surfaceTexture
     }
@@ -318,8 +288,8 @@ class CameraSource(context: Context, callback: SourceCallback) {
         }
 
         override fun onClosed(session: CameraCaptureSession) {
-            cameraCallback.close()
             encodeExecutor.awaitTermination(1, TimeUnit.SECONDS)
+            cameraCallback.onClosed()
         }
 
         override fun onConfigureFailed(session: CameraCaptureSession) { }
@@ -356,8 +326,6 @@ class CameraSource(context: Context, callback: SourceCallback) {
     private var isDrawFinish = false
     private var isDequeFinish = false
     private var frameTimeNano = 0L
-    private var pendingFrame = 0
-    private var processingFrame = 0
 
     private fun drawFrame(): Boolean {
         if (isStopped) {
@@ -365,6 +333,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
             return true
         }
 
+        var frameTimeNano: Long
         synchronized(frameLock) {
             // Use "while" instead of "if"
             // to avoid spurious wakeup
@@ -372,7 +341,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
                 (frameLock as Object).wait()
             }
             isFrameAvailable = false
-            processingFrame = pendingFrame
+            frameTimeNano = this.frameTimeNano
         }
 
         inputSurfaceTexture?.updateTexImage()
@@ -402,7 +371,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
 
         // For now, this function is a placeholder
         // You can implement drawing to FBO using a full screen quad and fragment shader here
-        EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, (processingFrame - 1).coerceAtLeast(0) * frameTimeNano)
+        EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, frameTimeNano)
         EGL14.eglSwapBuffers(eglDisplay, eglSurface)
 
         return false
@@ -423,7 +392,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
             }
             outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                 val newFormat = encoder.outputFormat
-                cameraCallback.prepare(newFormat)
+                cameraHandler.post { cameraCallback.onPrepared(newFormat) }
             }
             outputIndex >= 0 -> {
                 val encodedData = encoder.getOutputBuffer(outputIndex)
@@ -435,7 +404,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
                 if (bufferInfo.size > 0) {
                     encodedData.position(bufferInfo.offset)
                     encodedData.limit(bufferInfo.offset + bufferInfo.size)
-                    cameraCallback.frameAvailable(encodedData, bufferInfo)
+                    cameraCallback.onFrameAvailable(encodedData, bufferInfo)
                     // Important: mark the buffer as processed
                     encoder.releaseOutputBuffer(outputIndex, false)
                 }
@@ -447,17 +416,19 @@ class CameraSource(context: Context, callback: SourceCallback) {
     fun stop() {
         if (isStopped) return
         isStopped = true
-        stopCamera()
+        cameraHandler.post {
+            stopCamera()
+        }
     }
 
     @Volatile
     private var isStopped = false
 
     private fun stopCamera() {
-            captureSession?.apply {
-                stopRepeating()
-                close() // Call onClosed
-            }
+        captureSession?.apply {
+            stopRepeating()
+            close() // Call onClosed
+        }
     }
 
     private fun cleanUpResource() {
