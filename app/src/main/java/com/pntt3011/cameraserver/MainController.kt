@@ -6,6 +6,7 @@ import android.media.MediaFormat
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.Message
 import android.util.Log
 import java.nio.ByteBuffer
 
@@ -17,7 +18,21 @@ class MainController(context: Context) {
         HandlerThread("WorkerThread").apply { start() }
     }
     private val workerHandler by lazy {
-        Handler(workerThread.looper)
+        object : Handler(workerThread.looper) {
+            override fun handleMessage(msg: Message) {
+                try {
+                    super.handleMessage(msg)  // default behavior (if any)
+                } catch (e: Exception) {
+                    Log.e("WorkerHandler", "Exception in handleMessage: ${e.message}", e)
+                }
+            }
+        }
+    }
+    private val server by lazy {
+        MainServer(8080, 5004, workerHandler) {
+            stoppedServer = true
+            checkStop()
+        }
     }
     private val cameraSource by lazy {
         CameraSource(context, object : SourceCallback {
@@ -31,7 +46,8 @@ class MainController(context: Context) {
             }
 
             override fun onClosed() {
-                checkStop(true)
+                stoppedVideo = true
+                checkStop()
             }
         })
     }
@@ -41,44 +57,47 @@ class MainController(context: Context) {
                 get() = workerHandler
 
             override fun onPrepared(format: MediaFormat) {
+                server.onAudioPrepared(format)
             }
 
             override fun onFrameAvailable(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
+                server.onAudioFrameReceived(buffer, bufferInfo)
             }
 
             override fun onClosed() {
-                checkStop(false)
+                stoppedAudio = true
+                checkStop()
             }
         })
     }
 
     fun start() {
+        server.start()
         audioSource.start()
         cameraSource.start()
     }
 
     fun stop() {
+        server.stop()
         audioSource.stop()
         cameraSource.stop()
     }
 
     private var stoppedVideo = false
     private var stoppedAudio = false
+    private var stoppedServer = false
 
-    private fun checkStop(isVideo: Boolean) {
-        stoppedVideo = stoppedVideo || isVideo
-        stoppedAudio = stoppedAudio || !isVideo
-        if (stoppedVideo && stoppedAudio) {
+    private fun checkStop() {
+        if (stoppedVideo && stoppedAudio && stoppedServer) {
             cleanUp()
         }
-        cleanUp()
     }
 
     private fun cleanUp() {
         mainHandler.post {
             workerThread.quitSafely()
             workerThread.join()
-            Log.d("CleanUp", "gracefully clean up server")
+            Log.d("CleanUp", "gracefully clean up all")
         }
     }
 }
