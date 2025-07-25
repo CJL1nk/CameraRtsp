@@ -53,7 +53,7 @@ class AACLATMPacketizer(
         val config = (profile and 0x1F) shl 11 or
                 ((samplingRateIndex and 0x0F) shl 7) or
                 ((channelCount and 0x0F) shl 3)
-        sdp = "m: audio $port RTP/AVP $PAYLOAD_TYPE\r\n" +
+        sdp = "m=audio $port RTP/AVP $PAYLOAD_TYPE\r\n" +
                 "a=rtpmap:$PAYLOAD_TYPE MPEG4-GENERIC/$sampleRate/$channelCount\r\n" +
                 "a=fmtp:$PAYLOAD_TYPE streamtype=5; profile-level-id=15; mode=AAC-hbr; config="+Integer.toHexString(config)+"; SizeLength=13; IndexLength=3; IndexDeltaLength=3;\r\n"
     }

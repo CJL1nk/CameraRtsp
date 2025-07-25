@@ -19,6 +19,7 @@ class RTPSession(
     }
 
     fun start() {
+        Log.d("RTPSession", "Opening new session at ${ip}:${port}")
         while (!isStopped) {
             trySendAudio()
         }

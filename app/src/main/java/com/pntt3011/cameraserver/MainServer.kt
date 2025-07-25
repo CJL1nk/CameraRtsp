@@ -26,7 +26,7 @@ class MainServer(
             },"ConnectionThread-${threadNumber.getAndIncrement()}")
         }
     }
-    private val sessions = mutableListOf<RTPSession>()
+    private val sessions = mutableMapOf<String, RTPSession>()
     private val audioPacketizer by lazy {
         AACLATMPacketizer(rtpPort)
     }
@@ -43,10 +43,7 @@ class MainServer(
                 get() = workerHandler
 
             override fun onNewSession(destination: String) {
-                val rtpSession = createNewRtpSession(destination)
-                connectionThreadPool.submit {
-                    rtpSession.start()
-                }
+                startNewRtpSessionIfNeeded(destination)
             }
         }
     }
@@ -65,22 +62,28 @@ class MainServer(
 
     fun stop() {
         httpServer.stop()
-        sessions.forEach { it.stop() }
+        sessions.values.forEach { it.stop() }
     }
 
-    private fun createNewRtpSession(destination: String): RTPSession {
-        val rtpSession = RTPSession(
+    private fun startNewRtpSessionIfNeeded(destination: String) {
+        if (sessions.containsKey(destination)) {
+            return
+        }
+
+        sessions[destination] = RTPSession(
             destination,
             rtpPort,
             audioPacketizer
         ) {
             workerHandler.post {
-                sessions.remove(it)
+                sessions.remove(destination)
                 checkStop()
             }
+        }.also { rtpSession ->
+            connectionThreadPool.submit {
+                rtpSession.start()
+            }
         }
-        sessions.add(rtpSession)
-        return rtpSession
     }
 
     private var isHttpStopped = false
