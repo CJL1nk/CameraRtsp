@@ -6,6 +6,7 @@ import android.os.Handler
 import android.util.Log
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class MainServer(
@@ -36,6 +37,12 @@ class MainServer(
             checkStop()
         }
     }
+    private val rtcpValidation by lazy {
+        RTCPValidation(rtpPort, workerHandler) {
+            isRtcpStopped = true
+            checkStop()
+        }
+    }
 
     private val sessionHandler by lazy {
         object : HTTPServer.SessionHandler {
@@ -62,6 +69,7 @@ class MainServer(
 
     fun stop() {
         httpServer.stop()
+        rtcpValidation.stop()
         sessions.values.forEach { it.stop() }
     }
 
@@ -73,7 +81,8 @@ class MainServer(
         sessions[destination] = RTPSession(
             destination,
             rtpPort,
-            audioPacketizer
+            audioPacketizer,
+            rtcpValidation,
         ) {
             workerHandler.post {
                 sessions.remove(destination)
@@ -87,9 +96,11 @@ class MainServer(
     }
 
     private var isHttpStopped = false
+    private var isRtcpStopped = false
 
     private fun checkStop() {
-        if (isHttpStopped && sessions.isEmpty()) {
+        if (isHttpStopped && isRtcpStopped && sessions.isEmpty()) {
+            connectionThreadPool.awaitTermination(1, TimeUnit.SECONDS)
             Log.d("CleanUp", "gracefully clean up main server")
             onClosed.invoke()
         }

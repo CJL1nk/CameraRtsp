@@ -66,8 +66,10 @@ class HTTPServer(
         val ip = socket.inetAddress.hostAddress ?: ""
         val writer = socket.getOutputStream()
         val response = if (ip.isNotEmpty() && isResourceReady()) {
+            Log.d("HTTPServer", "response for $ip: 200")
             sdpContent(ip)
         } else {
+            Log.d("HTTPServer", "response for $ip: 404")
             errorContent
         }
         writer.write(response.toByteArray())

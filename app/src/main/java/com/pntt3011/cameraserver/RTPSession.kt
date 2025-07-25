@@ -9,6 +9,7 @@ class RTPSession(
     private val ip: String,
     private val port: Int,
     private val audioPacketizer: AACLATMPacketizer,
+    private val rtcpValidation: RTCPValidation,
     private val onClosed: (RTPSession) -> Unit
 ) {
     @Volatile
@@ -22,6 +23,7 @@ class RTPSession(
         Log.d("RTPSession", "Opening new session at ${ip}:${port}")
         while (!isStopped) {
             trySendAudio()
+            checkDisconnect()
         }
         socket.close()
         Log.d("CleanUp", "gracefully clean up rtp session ${ip}:${port}")
@@ -31,14 +33,19 @@ class RTPSession(
     private var audioSeq = UNINITIALIZED_SEQ_VALUE
 
     private fun trySendAudio() {
-        val buffer = audioPacketizer.getLatestBuffer(0)
-        if (buffer == null || buffer.seq == audioSeq) {
-            Thread.sleep(1)
-            return
-        }
-        val packet = DatagramPacket(buffer.data, buffer.length, InetAddress.getByName(ip), port)
+        val buffer = audioPacketizer.getLatestBuffer(audioSeq)
         audioSeq = buffer.seq
+        val packet = DatagramPacket(buffer.data, buffer.length, InetAddress.getByName(ip), port)
+        Log.d("RTPSession", "Sending ${buffer.length} bytes to ${ip}:${port}")
         socket.send(packet)
+    }
+
+    private fun checkDisconnect() {
+        val isDisconnected = !rtcpValidation.checkRtcpReport(ip)
+        if (isDisconnected) {
+            stop()
+            rtcpValidation.disconnect(ip)
+        }
     }
 
     fun stop() {

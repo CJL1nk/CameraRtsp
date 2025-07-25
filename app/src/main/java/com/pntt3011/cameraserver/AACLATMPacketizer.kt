@@ -2,7 +2,6 @@ package com.pntt3011.cameraserver
 
 import android.media.MediaCodec.BufferInfo
 import android.media.MediaFormat
-import com.pntt3011.cameraserver.RTPSession.Companion.UNINITIALIZED_SEQ_VALUE
 import java.nio.ByteBuffer
 import kotlin.random.Random
 
@@ -32,14 +31,15 @@ class AACLATMPacketizer(
         )
     }
 
-
-    private val syncDataLock = Any()
-    private var data = ByteArray(0)
-    private var dataSize = 0
-    private var seqNumber = (Math.random() * 65536).toInt()
-
-    @Volatile
-    private var hasData = false
+    class Buffer(
+        var data: ByteArray,
+        var seq: Int,
+        var length: Int,
+    )
+    private val producedBuffer = Buffer(ByteArray(0), (Math.random() * 65536).toInt(), 0)
+    private val consumedBuffer = Buffer(ByteArray(0), (Math.random() * 65536).toInt(), 0)
+    private var isFrameAvailable = false
+    private val frameLock = Any()
 
     private val ssrc = Random(123).nextInt()
     var sdp = ""
@@ -59,70 +59,65 @@ class AACLATMPacketizer(
     }
 
     fun onAACFrameReceived(byteBuffer: ByteBuffer, bufferInfo: BufferInfo) {
-        synchronized(syncDataLock) {
+        synchronized(frameLock) {
             // Increase seqNumber first so that data has matched seqNumber
-            seqNumber = (seqNumber + 1) % 65536
+            producedBuffer.seq = (producedBuffer.seq + 1) % 65536
 
-            dataSize = bufferInfo.size + HEADER_SIZE
-            if (dataSize > data.size) {
-                data = ByteArray(dataSize)
+            producedBuffer.length = bufferInfo.size + HEADER_SIZE
+            if (producedBuffer.length > producedBuffer.data.size) {
+                producedBuffer.data = ByteArray(producedBuffer.length)
             }
 
-            data[0] = 0x80.toByte() // Version 2
-            data[1] = (0x80 or PAYLOAD_TYPE).toByte()
-            data[2] = (seqNumber shr 8).toByte()
-            data[3] = (seqNumber and 0xFF).toByte()
+            producedBuffer.data[0] = 0x80.toByte() // Version 2
+            producedBuffer.data[1] = (0x80 or PAYLOAD_TYPE).toByte()
+            producedBuffer.data[2] = (producedBuffer.seq shr 8).toByte()
+            producedBuffer.data[3] = (producedBuffer.seq and 0xFF).toByte()
 
             val rtpTimestamp = bufferInfo.presentationTimeUs * 1000
-            data[4] = ((rtpTimestamp shr 24) and 0xFF).toByte()
-            data[5] = ((rtpTimestamp shr 16) and 0xFF).toByte()
-            data[6] = ((rtpTimestamp shr 8) and 0xFF).toByte()
-            data[7] = (rtpTimestamp and 0xFF).toByte()
+            producedBuffer.data[4] = ((rtpTimestamp shr 24) and 0xFF).toByte()
+            producedBuffer.data[5] = ((rtpTimestamp shr 16) and 0xFF).toByte()
+            producedBuffer.data[6] = ((rtpTimestamp shr 8) and 0xFF).toByte()
+            producedBuffer.data[7] = (rtpTimestamp and 0xFF).toByte()
 
-            data[8] = ((ssrc shr 24) and 0xFF).toByte()
-            data[9] = ((ssrc shr 16) and 0xFF).toByte()
-            data[10] = ((ssrc shr 8) and 0xFF).toByte()
-            data[11] = (ssrc and 0xFF).toByte()
+            producedBuffer.data[8] = ((ssrc shr 24) and 0xFF).toByte()
+            producedBuffer.data[9] = ((ssrc shr 16) and 0xFF).toByte()
+            producedBuffer.data[10] = ((ssrc shr 8) and 0xFF).toByte()
+            producedBuffer.data[11] = (ssrc and 0xFF).toByte()
 
             val dup = byteBuffer.duplicate()
             dup.position(bufferInfo.offset)
             dup.limit(bufferInfo.offset + bufferInfo.size)
-            dup.get(data, HEADER_SIZE, bufferInfo.size)
-        }
+            dup.get(producedBuffer.data, HEADER_SIZE, bufferInfo.size)
 
-        hasData = true
+            isFrameAvailable = true
+            (frameLock as Object).notifyAll()
+        }
     }
 
-    class Buffer(
-        var data: ByteArray,
-        var seq: Int,
-        var length: Int,
-    ) {
-        fun isInitialized() = seq != UNINITIALIZED_SEQ_VALUE
-    }
-    private val buffer = Buffer(ByteArray(0), UNINITIALIZED_SEQ_VALUE, 0)
-
-    fun getLatestBuffer(seq: Int): Buffer? {
-        if (!hasData) {
-            return null
+    fun getLatestBuffer(seq: Int): Buffer {
+        // Call from late consumers
+        if (isFrameAvailable && seq != consumedBuffer.seq) {
+            return consumedBuffer
         }
-
-        // The buffer is not outdated
-        if (buffer.isInitialized() && seq != buffer.seq) {
-            return buffer
-        }
-
-        // Read from backed data if new data has arrived
-        synchronized(syncDataLock) {
-            if (seqNumber != buffer.seq) {
-                if (dataSize > buffer.length) {
-                    buffer.data = ByteArray(dataSize)
-                }
-                System.arraycopy(data, 0, buffer.data, 0, dataSize)
-                buffer.length = dataSize
-                buffer.seq = seqNumber
+        synchronized(frameLock) {
+            // Double check late consumers
+            if (isFrameAvailable && seq != consumedBuffer.seq) {
+                return consumedBuffer
             }
+            // Only the earliest consumer will enter this loop
+            // Use "while" instead of "if"
+            // to avoid spurious wakeup
+            while (!isFrameAvailable || seq == producedBuffer.seq) {
+                (frameLock as Object).wait()
+            }
+            if (producedBuffer.length > consumedBuffer.length) {
+                consumedBuffer.data = ByteArray(producedBuffer.length)
+            }
+            System.arraycopy(producedBuffer.data, 0, consumedBuffer.data, 0, producedBuffer.length)
+            consumedBuffer.length = producedBuffer.length
+            consumedBuffer.seq = producedBuffer.seq
+            isFrameAvailable = false
         }
-        return buffer
+        return consumedBuffer
     }
 }
