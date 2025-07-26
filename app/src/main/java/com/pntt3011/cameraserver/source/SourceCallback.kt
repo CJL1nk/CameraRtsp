@@ -1,4 +1,4 @@
-package com.pntt3011.cameraserver
+package com.pntt3011.cameraserver.source
 
 import android.media.MediaCodec.BufferInfo
 import android.media.MediaFormat

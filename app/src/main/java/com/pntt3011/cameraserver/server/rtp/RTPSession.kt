@@ -1,6 +1,8 @@
-package com.pntt3011.cameraserver
+package com.pntt3011.cameraserver.server.rtp
 
 import android.util.Log
+import com.pntt3011.cameraserver.server.packetizer.AACLATMPacketizer
+import com.pntt3011.cameraserver.server.packetizer.RTPPacketizer
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -30,13 +32,15 @@ class RTPSession(
         onClosed(this)
     }
 
-    private var audioSeq = UNINITIALIZED_SEQ_VALUE
+    private var audioSeq = ((Math.random() * 65536) % 65536).toInt()
+    private val audioBuffer = RTPPacketizer.Buffer(ByteArray(0), 0, 0L)
 
     private fun trySendAudio() {
-        val buffer = audioPacketizer.getLatestBuffer(audioSeq)
-        audioSeq = buffer.seq
-        val packet = DatagramPacket(buffer.data, buffer.length, InetAddress.getByName(ip), port)
-        Log.d("RTPSession", "Sending ${buffer.length} bytes to ${ip}:${port}")
+        audioPacketizer.getLastBuffer(audioBuffer)
+        audioBuffer.injectSeqNumber(audioSeq)
+        audioSeq = (audioSeq + 1) % 65536
+        val packet = DatagramPacket(audioBuffer.data, audioBuffer.length, InetAddress.getByName(ip), port)
+        Log.d("RTPSession", "Sending ${audioBuffer.length} audio bytes to ${ip}:${port}")
         socket.send(packet)
     }
 
@@ -50,9 +54,5 @@ class RTPSession(
 
     fun stop() {
         isStopped = true
-    }
-
-    companion object {
-        const val UNINITIALIZED_SEQ_VALUE = -1
     }
 }

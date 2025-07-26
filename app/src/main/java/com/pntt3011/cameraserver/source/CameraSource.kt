@@ -1,4 +1,4 @@
-package com.pntt3011.cameraserver
+package com.pntt3011.cameraserver.source
 
 import android.annotation.SuppressLint
 import android.content.Context
