@@ -40,7 +40,6 @@ class RTPSession(
         audioBuffer.injectSeqNumber(audioSeq)
         audioSeq = (audioSeq + 1) % 65536
         val packet = DatagramPacket(audioBuffer.data, audioBuffer.length, InetAddress.getByName(ip), port)
-        Log.d("RTPSession", "Sending ${audioBuffer.length} audio bytes to ${ip}:${port}")
         socket.send(packet)
     }
 

@@ -26,15 +26,15 @@ abstract class RTPPacketizer(
         private set
 
     fun onPrepared(mediaFormat: MediaFormat) {
-        sdp = prepareSdp(mediaFormat)
+        sdp = prepare(mediaFormat)
     }
 
-    protected abstract fun prepareSdp(mediaFormat: MediaFormat): String
+    protected abstract fun prepare(mediaFormat: MediaFormat): String
 
     fun onAACFrameReceived(byteBuffer: ByteBuffer, bufferInfo: BufferInfo) {
         synchronized(frameLock) {
-            buffer.timestamp = bufferInfo.presentationTimeUs * 1000
-            buffer.length = packetizeFrame(byteBuffer, bufferInfo)
+            buffer.timestamp = increaseTimestamp(buffer.timestamp)
+            buffer.length = packetizeFrame(byteBuffer, bufferInfo, buffer.timestamp)
             if (frameWaitThreadCount > 0) {
                 frameWaitThreadCount = 0
                 (frameLock as Object).notifyAll()
@@ -42,7 +42,9 @@ abstract class RTPPacketizer(
         }
     }
 
-    protected abstract fun packetizeFrame(byteBuffer: ByteBuffer, bufferInfo: BufferInfo): Int
+    protected abstract fun increaseTimestamp(oldTimestamp: Long): Long
+
+    protected abstract fun packetizeFrame(byteBuffer: ByteBuffer, bufferInfo: BufferInfo, timestamp: Long): Int
 
     fun getLastBuffer(currentBuffer: Buffer): Buffer {
         synchronized(frameLock) {

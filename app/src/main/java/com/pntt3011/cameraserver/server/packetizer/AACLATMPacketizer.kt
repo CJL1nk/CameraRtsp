@@ -10,6 +10,7 @@ class AACLATMPacketizer(port: Int): RTPPacketizer(port) {
         private const val HEADER_SIZE = 12
         private const val AU_HEADER_SIZE = 4
         private const val PAYLOAD_TYPE = 96
+        private const val SAMPLES_PER_FRAME = 1024 // Standard
         private val SAMPLING_RATE_INDEX = intArrayOf(
             96000,  // 0
             88200,  // 1
@@ -30,10 +31,13 @@ class AACLATMPacketizer(port: Int): RTPPacketizer(port) {
         )
     }
 
-    override fun prepareSdp(mediaFormat: MediaFormat): String {
+    private var sampleRate = 0
+    private var channelCount = 0
+
+    override fun prepare(mediaFormat: MediaFormat): String {
         val profile = 2 // AAC LC
-        val channelCount = mediaFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-        val sampleRate = mediaFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+        channelCount = mediaFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        sampleRate = mediaFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         val samplingRateIndex = SAMPLING_RATE_INDEX.indexOf(sampleRate)
         val config = (profile and 0x1F) shl 11 or
                 ((samplingRateIndex and 0x0F) shl 7) or
@@ -43,9 +47,13 @@ class AACLATMPacketizer(port: Int): RTPPacketizer(port) {
                 "a=fmtp:$PAYLOAD_TYPE streamtype=5; profile-level-id=15; mode=AAC-hbr; config="+Integer.toHexString(config)+"; SizeLength=13; IndexLength=3; IndexDeltaLength=3;\r\n"
     }
 
+    override fun increaseTimestamp(oldTimestamp: Long): Long {
+        return oldTimestamp + SAMPLES_PER_FRAME
+    }
+
     private val ssrc = Random(123).nextInt()
 
-    override fun packetizeFrame(byteBuffer: ByteBuffer, bufferInfo: BufferInfo): Int {
+    override fun packetizeFrame(byteBuffer: ByteBuffer, bufferInfo: BufferInfo, timestamp: Long): Int {
         val length = bufferInfo.size + HEADER_SIZE + AU_HEADER_SIZE
         if (length > buffer.data.size) {
             buffer.data = ByteArray(length)
@@ -56,10 +64,10 @@ class AACLATMPacketizer(port: Int): RTPPacketizer(port) {
         buffer.data[2] = 0 // Injected by each consumer
         buffer.data[3] = 0 // Injected by each consumer
 
-        buffer.data[4] = ((buffer.timestamp shr 24) and 0xFF).toByte()
-        buffer.data[5] = ((buffer.timestamp shr 16) and 0xFF).toByte()
-        buffer.data[6] = ((buffer.timestamp shr 8) and 0xFF).toByte()
-        buffer.data[7] = (buffer.timestamp and 0xFF).toByte()
+        buffer.data[4] = ((timestamp shr 24) and 0xFF).toByte()
+        buffer.data[5] = ((timestamp shr 16) and 0xFF).toByte()
+        buffer.data[6] = ((timestamp shr 8) and 0xFF).toByte()
+        buffer.data[7] = (timestamp and 0xFF).toByte()
 
         buffer.data[8] = ((ssrc shr 24) and 0xFF).toByte()
         buffer.data[9] = ((ssrc shr 16) and 0xFF).toByte()
