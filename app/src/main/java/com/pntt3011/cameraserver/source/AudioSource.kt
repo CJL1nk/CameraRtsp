@@ -23,6 +23,9 @@ class AudioSource(private val callback: SourceCallback) {
     @Volatile
     private var isRecording = false
 
+    private val frameQueue by lazy {
+        AudioFrameQueue(callback)
+    }
 
     fun start() {
         if (isRecording) return
@@ -99,7 +102,7 @@ class AudioSource(private val callback: SourceCallback) {
                         val outputBuffer = codec.getOutputBuffer(outputIndex) ?: break
                         outputBuffer.position(bufferInfo.offset)
                         outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                        callback.onFrameAvailable(outputBuffer, bufferInfo)
+                        frameQueue.onFrameAvailable(outputBuffer, bufferInfo)
                         codec.releaseOutputBuffer(outputIndex, false)
 
                         if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -126,6 +129,7 @@ class AudioSource(private val callback: SourceCallback) {
         if (!isRecording) return
         isRecording = false
         callback.handler.post {
+            frameQueue.stop()
             encodeExecutor?.awaitTermination(1, TimeUnit.SECONDS)
             callback.onClosed()
         }
