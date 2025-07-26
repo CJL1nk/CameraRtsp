@@ -4,6 +4,7 @@ import android.os.Handler
 import android.util.Log
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -38,15 +39,23 @@ class HTTPServer(
         isAudioReady = true
     }
 
+    private val server by lazy {
+        ServerSocket(port)
+    }
+
     fun start() {
         httpThread.submit {
             try {
-                val server = ServerSocket(port)
                 while (!isStopped) {
-                    val client = server.accept()
-                    connectionThreadPool.submit { handleClient(client) }
+                    try {
+                        val client = server.accept()
+                        connectionThreadPool.submit { handleClient(client) }
+                    } catch (e: SocketException) {
+                        isStopped = true
+                        // This happens when socket is closed from another thread
+                        Log.d("HTTPServer", "Socket closed, exiting listening loop.")
+                    }
                 }
-                server.close()
             } catch (e: Exception) {
                 Log.e("HTTPServer", "Exception", e)
             }
@@ -56,6 +65,7 @@ class HTTPServer(
     fun stop() {
         isStopped = true
         sessionHandler.handler.post {
+            server.close()
             httpThread.awaitTermination(1, TimeUnit.SECONDS)
             Log.d("CleanUp", "gracefully clean up http server")
             onClosed.invoke()
