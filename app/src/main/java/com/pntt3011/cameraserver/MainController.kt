@@ -89,6 +89,7 @@ class MainController(context: Context) {
     }
 
     fun start() {
+        loadNativeLib()
         server.start()
         audioSource.start()
         cameraSource.start()
@@ -115,6 +116,12 @@ class MainController(context: Context) {
             workerThread.quitSafely()
             workerThread.join()
             Log.d("CleanUp", "gracefully clean up all")
+        }
+    }
+
+    private fun loadNativeLib() {
+        workerHandler.post {
+            System.loadLibrary("cameraserver")
         }
     }
 }
