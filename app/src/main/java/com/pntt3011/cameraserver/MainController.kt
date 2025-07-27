@@ -9,6 +9,8 @@ import android.os.Looper
 import android.os.Message
 import android.util.Log
 import com.pntt3011.cameraserver.server.MainServer
+import com.pntt3011.cameraserver.server.rtsp.RTSPServer.Companion.AUDIO_TRACK_ID
+import com.pntt3011.cameraserver.server.rtsp.RTSPServer.Companion.VIDEO_TRACK_ID
 import com.pntt3011.cameraserver.source.AudioSource
 import com.pntt3011.cameraserver.source.CameraSource
 import com.pntt3011.cameraserver.source.SourceCallback
@@ -33,7 +35,7 @@ class MainController(context: Context) {
         }
     }
     private val server by lazy {
-        MainServer(8554, 5004, workerHandler) {
+        MainServer(8554, intArrayOf(5004, 5006), workerHandler) {
             stoppedServer = true
             checkStop()
         }
@@ -44,9 +46,15 @@ class MainController(context: Context) {
                 get() = workerHandler
 
             override fun onPrepared(format: MediaFormat) {
+                // Do nothing
+            }
+
+            override fun onPrepared(buffer: ByteBuffer) {
+                server.onMediaPrepared(buffer, VIDEO_TRACK_ID)
             }
 
             override fun onFrameAvailable(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
+                server.onFrameReceived(buffer, bufferInfo, VIDEO_TRACK_ID)
             }
 
             override fun onClosed() {
@@ -61,11 +69,15 @@ class MainController(context: Context) {
                 get() = workerHandler
 
             override fun onPrepared(format: MediaFormat) {
-                server.onAudioPrepared(format)
+                server.onMediaPrepared(format, AUDIO_TRACK_ID)
+            }
+
+            override fun onPrepared(buffer: ByteBuffer) {
+                // Do nothing
             }
 
             override fun onFrameAvailable(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
-                server.onAudioFrameReceived(buffer, bufferInfo)
+                server.onFrameReceived(buffer, bufferInfo, AUDIO_TRACK_ID)
             }
 
             override fun onClosed() {

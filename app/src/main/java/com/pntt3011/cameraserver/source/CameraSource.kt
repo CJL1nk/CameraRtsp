@@ -21,6 +21,7 @@ import android.opengl.EGLExt.EGL_RECORDABLE_ANDROID
 import android.opengl.EGLSurface
 import android.opengl.GLES11Ext
 import android.opengl.GLES31
+import android.util.Base64
 import android.util.Log
 import android.util.Range
 import android.view.Surface
@@ -379,7 +380,6 @@ class CameraSource(context: Context, callback: SourceCallback) {
 
     private val encoderOutputBufferInfo = MediaCodec.BufferInfo()
 
-
     private fun processNextVideoFrame(): Boolean {
         val encoder = this.encoder
         if (!isEncoderRunning || encoder == null) {
@@ -392,7 +392,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
             }
             outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                 val newFormat = encoder.outputFormat
-                cameraHandler.post { cameraCallback.onPrepared(newFormat) }
+                cameraCallback.onPrepared(newFormat)
             }
             outputIndex >= 0 -> {
                 val encodedData = encoder.getOutputBuffer(outputIndex)
@@ -404,7 +404,11 @@ class CameraSource(context: Context, callback: SourceCallback) {
                 if (bufferInfo.size > 0) {
                     encodedData.position(bufferInfo.offset)
                     encodedData.limit(bufferInfo.offset + bufferInfo.size)
-                    cameraCallback.onFrameAvailable(encodedData, bufferInfo)
+                    if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
+                        cameraCallback.onFrameAvailable(encodedData, bufferInfo)
+                    } else {
+                        cameraCallback.onPrepared(encodedData)
+                    }
                     // Important: mark the buffer as processed
                     encoder.releaseOutputBuffer(outputIndex, false)
                 }

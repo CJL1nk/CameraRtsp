@@ -2,45 +2,30 @@ package com.pntt3011.cameraserver.server.packetizer
 
 import android.media.MediaCodec.BufferInfo
 import android.media.MediaFormat
+import android.util.Log
 import java.nio.ByteBuffer
+import kotlin.random.Random
+import kotlin.random.nextUInt
 
-abstract class RTPPacketizer(
-    val port: Int,
-) {
-    class Buffer(
-        var data: ByteArray,
-        var length: Int,
-        var timestamp: Int,
-    ) {
-        fun injectSeqNumber(seq: Int) {
-            data[2] = ((seq shr 8) and 0xFF).toByte()
-            data[3] = (seq and 0xFF).toByte()
-        }
-        fun injectSrccNumber(ssrc: Int) {
-            data[8] = ((ssrc shr 24) and 0xFF).toByte()
-            data[9] = ((ssrc shr 16) and 0xFF).toByte()
-            data[10] = ((ssrc shr 8) and 0xFF).toByte()
-            data[11] = (ssrc and 0xFF).toByte()
-        }
-    }
+abstract class RTPPacketizer {
 
-    protected val buffer = Buffer(ByteArray(0), 0, 0)
+    private val framePacket = FramePacket()
     private var frameWaitThreadCount = 0
     private val frameLock = Any()
 
     var sdp = ""
-        private set
+        protected set
+    protected var sampleRate = 0
+    private var lastFrameTimeUs = 0L
 
-    fun onPrepared(mediaFormat: MediaFormat) {
-        sdp = prepare(mediaFormat)
-    }
+    open fun onPrepared(mediaFormat: MediaFormat) {}
 
-    protected abstract fun prepare(mediaFormat: MediaFormat): String
+    open fun onPrepared(mediaBuffer: ByteBuffer) {}
 
-    fun onAACFrameReceived(byteBuffer: ByteBuffer, bufferInfo: BufferInfo) {
+    fun onFrameReceived(byteBuffer: ByteBuffer, bufferInfo: BufferInfo) {
         synchronized(frameLock) {
-            buffer.timestamp = increaseTimestamp(buffer.timestamp)
-            buffer.length = packetizeFrame(byteBuffer, bufferInfo, buffer.timestamp)
+            framePacket.timestamp = increaseTimestamp(framePacket.timestamp, bufferInfo.presentationTimeUs)
+            framePacket.numPacket = packetizeFrame(framePacket, byteBuffer, bufferInfo)
             if (frameWaitThreadCount > 0) {
                 frameWaitThreadCount = 0
                 (frameLock as Object).notifyAll()
@@ -48,29 +33,82 @@ abstract class RTPPacketizer(
         }
     }
 
-    protected abstract fun increaseTimestamp(oldTimestamp: Int): Int
+    private fun increaseTimestamp(oldTimestamp: UInt, frameTimestampUs: Long): UInt {
+        if (lastFrameTimeUs == 0L) {
+            lastFrameTimeUs = frameTimestampUs
+            return Random.nextUInt()
+        }
+        val deltaUs = frameTimestampUs - lastFrameTimeUs
+        lastFrameTimeUs = frameTimestampUs
+        // (sample / frame) = (sample / second) * (second / frame)
+        // => delta RTP time = clock rate * delta frame time
+        val deltaRtpTime = (deltaUs * sampleRate / 1_000_000).toUInt()
+        return oldTimestamp + deltaRtpTime
+    }
 
-    protected abstract fun packetizeFrame(byteBuffer: ByteBuffer, bufferInfo: BufferInfo, timestamp: Int): Int
+    protected abstract fun packetizeFrame(framePacket: FramePacket, byteBuffer: ByteBuffer, bufferInfo: BufferInfo): Int
 
-    fun getLastBuffer(currentBuffer: Buffer): Buffer {
+    fun awaitFramePacket(current: FramePacket): FramePacket {
         synchronized(frameLock) {
-            if (currentBuffer.timestamp >= buffer.timestamp) {
+            if (current.timestamp >= framePacket.timestamp) {
                 frameWaitThreadCount += 1
             }
-            while (currentBuffer.timestamp >= buffer.timestamp) {
+            while (current.timestamp >= framePacket.timestamp) {
                 (frameLock as Object).wait()
             }
-            if (buffer.length > currentBuffer.length) {
-                currentBuffer.data = ByteArray(buffer.length)
-            }
-            System.arraycopy(buffer.data, 0, currentBuffer.data, 0, buffer.length)
-            currentBuffer.length = buffer.length
-            currentBuffer.timestamp = buffer.timestamp
+            framePacket.clone(current)
         }
-        return currentBuffer
+        return current
+    }
+
+    class FramePacket(
+        var timestamp: UInt = 0u,
+        val rtpPacket: MutableList<RtpPacket> = mutableListOf(),
+        var numPacket: Int = 0,
+    ) {
+        fun inject(seq: Int, ssrc: Int) {
+            for (i in 0 until numPacket) {
+                rtpPacket[i].inject(timestamp, seq, ssrc)
+            }
+        }
+        fun clone(dest: FramePacket) {
+            dest.timestamp = timestamp
+            dest.numPacket = numPacket
+            for (i in dest.rtpPacket.size until numPacket) {
+                dest.rtpPacket.add(RtpPacket())
+            }
+            for (i in 0 until numPacket) {
+                dest.rtpPacket[i].size = rtpPacket[i].size
+                if (dest.rtpPacket[i].data.size < rtpPacket[i].size) {
+                    dest.rtpPacket[i].data = ByteArray(rtpPacket[i].size)
+                }
+                System.arraycopy(rtpPacket[i].data, 0, dest.rtpPacket[i].data, 0, rtpPacket[i].size)
+            }
+        }
+    }
+
+    class RtpPacket(
+        var size: Int = 0,
+        var data: ByteArray = ByteArray(0)
+    ) {
+        fun inject(timestamp: UInt, seq: Int, ssrc: Int) {
+            data[2] = ((seq shr 8) and 0xFF).toByte()
+            data[3] = (seq and 0xFF).toByte()
+
+            data[4] = ((timestamp shr 24) and 255u).toByte()
+            data[5] = ((timestamp shr 16) and 255u).toByte()
+            data[6] = ((timestamp shr 8) and 255u).toByte()
+            data[7] = (timestamp and 255u).toByte()
+
+            data[8] = ((ssrc shr 24) and 0xFF).toByte()
+            data[9] = ((ssrc shr 16) and 0xFF).toByte()
+            data[10] = ((ssrc shr 8) and 0xFF).toByte()
+            data[11] = (ssrc and 0xFF).toByte()
+        }
     }
 
     companion object {
         const val HEADER_SIZE = 12
+        const val MAX_PAYLOAD_SIZE = 1200 // Limit by Maximum Transmission Unit
     }
 }

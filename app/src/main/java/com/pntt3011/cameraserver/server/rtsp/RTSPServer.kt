@@ -13,15 +13,16 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class RTSPServer(
-    private val port: Int,
+    private val rtspPort: Int,
+    private val rtpPort: IntArray,
     private val connectionThreadPool: ExecutorService,
     private val sessionHandler: SessionHandler,
     private val onClosed: () -> Unit,
 ) {
     private val origin = "127.0.0.1"
-    private var audioSdp = ""
+    private val sdp = Array(2) { "" }
     @Volatile
-    private var isAudioReady = false
+    private var isResourceReady = false
 
     private val rtspThread by lazy {
         Executors.newSingleThreadExecutor {
@@ -32,17 +33,21 @@ class RTSPServer(
 
     interface SessionHandler {
         val handler: Handler
-        fun onNewSession(address: InetAddress, rtpPort: Int)
-        fun onDestroySession(address: InetAddress, rtpPort: Int)
+        fun onNewSession(address: InetAddress, rtpPort: IntArray)
+        fun onDestroySession(address: InetAddress, rtpPort: IntArray)
     }
 
-    fun onAudioPrepared(audioSdp: String) {
-        this.audioSdp = audioSdp
-        isAudioReady = true
+    fun onMediaPrepared(sdp: String, trackId: Int) {
+        if (trackId == VIDEO_TRACK_ID || trackId == AUDIO_TRACK_ID) {
+            this.sdp[trackId] = sdp
+            val trackName = if (trackId == VIDEO_TRACK_ID) "video" else "audio"
+            Log.d("RTSPServer", "$trackName prepared: $sdp")
+            isResourceReady = this.sdp.all { it.isNotEmpty() }
+        }
     }
 
     private val server by lazy {
-        ServerSocket(port)
+        ServerSocket(rtspPort)
     }
 
     fun start() {
@@ -76,8 +81,7 @@ class RTSPServer(
         val sessionId = UUID.randomUUID().toString()
         runningSockets[sessionId] = socket
 
-        var clientRtpPort = port
-        var clientRtcpPort: Int
+        val clientRtpPort = IntArray(2)
         val clientAddress = socket.inetAddress
         val clientIp = clientAddress.hostAddress ?: ""
 
@@ -86,6 +90,9 @@ class RTSPServer(
 
         val requestBuffer = ByteArray(4096)
         var isClientStopped = false
+
+        Log.d("RTSPServer", "handle client $clientIp")
+        Log.d("RTSPServer", "start session $sessionId")
 
         while (!socket.isClosed && !isClientStopped) {
             try {
@@ -96,13 +103,18 @@ class RTSPServer(
                 val requestLines = requestText.lines().filter { it.isNotBlank() }
                 if (requestLines.isEmpty()) continue
 
+                Log.d("RTSPServer", "handle request from $sessionId: $requestLines")
+
                 val requestLine = requestLines[0]
                 val cseqLine = requestLines.find { it.startsWith("CSeq:", ignoreCase = true) }
                 val cseq = cseqLine?.split(" ")?.getOrNull(1) ?: "1"
+                val trackId = Regex("trackID=(\\d+)").find(requestLine)?.groupValues?.get(1)
+                    ?.toIntOrNull()
+                    ?.takeIf { it == VIDEO_TRACK_ID || it == AUDIO_TRACK_ID }
 
                 val response = when {
-                    !isResourceReady() -> {
-                        "RTSP/1.0 501 Not Implemented\r\n" +
+                    !isResourceReady -> {
+                        "RTSP/1.0 400 Bad Request\r\n" +
                                 "CSeq: $cseq\r\n" +
                                 "\r\n"
                     }
@@ -126,24 +138,38 @@ class RTSPServer(
 
                     requestLine.startsWith("SETUP", ignoreCase = true) -> {
                         val transportLine = requestLines.find { it.startsWith("Transport:") }
-                        val clientPorts = Regex("client_port=(\\d+)-(\\d+)").find(transportLine ?: "")
-                        clientRtpPort = clientPorts?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 5004
-                        clientRtcpPort = clientPorts?.groupValues?.getOrNull(2)?.toIntOrNull() ?: 5005
-                        "RTSP/1.0 200 OK\r\n" +
-                                "CSeq: $cseq\r\n" +
-                                "Transport: RTP/AVP;unicast;client_port=$clientRtpPort-$clientRtcpPort;server_port=${port}-${port+1}\r\n" +
-                                "Session: $sessionId\r\n" +
-                                "\r\n"
+                        val ports = Regex("client_port=(\\d+)-(\\d+)").find(transportLine ?: "")
+                        val rtpPort = ports?.groupValues?.getOrNull(1)?.toIntOrNull()
+                        val rtcpPort = ports?.groupValues?.getOrNull(2)?.toIntOrNull()
+                        if (rtpPort == null || rtcpPort == null || trackId == null) {
+                            "RTSP/1.0 400 Bad Request\r\n" +
+                                    "CSeq: $cseq\r\n" +
+                                    "\r\n"
+                        } else {
+                            val serverPort = this.rtpPort[trackId]
+                            clientRtpPort[trackId] = rtpPort
+                            "RTSP/1.0 200 OK\r\n" +
+                                    "CSeq: $cseq\r\n" +
+                                    "Transport: RTP/AVP;unicast;client_port=$rtpPort-$rtcpPort;server_port=${serverPort}-${serverPort+1}\r\n" +
+                                    "Session: $sessionId\r\n" +
+                                    "\r\n"
+                        }
                     }
 
                     requestLine.startsWith("PLAY", ignoreCase = true) -> {
-                        sessionHandler.handler.post {
-                            sessionHandler.onNewSession(clientAddress, clientRtpPort)
+                        if (clientRtpPort.any { it == 0 } ) {
+                            "RTSP/1.0 400 Bad Request\r\n" +
+                                    "CSeq: $cseq\r\n" +
+                                    "\r\n"
+                        } else {
+                            sessionHandler.handler.post {
+                                sessionHandler.onNewSession(clientAddress, clientRtpPort)
+                            }
+                            "RTSP/1.0 200 OK\r\n" +
+                                    "CSeq: $cseq\r\n" +
+                                    "Session: $sessionId\r\n" +
+                                    "\r\n"
                         }
-                        "RTSP/1.0 200 OK\r\n" +
-                                "CSeq: $cseq\r\n" +
-                                "Session: $sessionId\r\n" +
-                                "\r\n"
                     }
 
                     requestLine.startsWith("TEARDOWN", ignoreCase = true) -> {
@@ -163,6 +189,8 @@ class RTSPServer(
                                 "\r\n"
                     }
                 }
+                Log.d("RTSPServer", "response to $sessionId: $response")
+
                 output.write(response.toByteArray())
                 output.flush()
 
@@ -175,12 +203,8 @@ class RTSPServer(
             socket.close()
         }
 
-        Log.d("RTSPServer", "Client $clientIp:$clientRtpPort disconnected, exiting listening loop.")
+        Log.d("RTSPServer", "Client $clientIp disconnected, exiting listening loop.")
         runningSockets.remove(sessionId)
-    }
-
-    private fun isResourceReady(): Boolean {
-        return isAudioReady
     }
 
     private fun prepareSdp(ip: String): String {
@@ -189,6 +213,17 @@ class RTSPServer(
                 "s=Camera Stream\r\n" +
                 "c=IN IP4 $ip\r\n" +
                 "t=0 0\r\n" +
-                audioSdp
+                "a=control:*\r\n" +
+                "\r\n" +
+                sdp[VIDEO_TRACK_ID] +
+                "a=control:trackID=$VIDEO_TRACK_ID\r\n" +
+                "\r\n" +
+                sdp[AUDIO_TRACK_ID] +
+                "a=control:trackID=$AUDIO_TRACK_ID\r\n"
+    }
+
+    companion object {
+        const val VIDEO_TRACK_ID = 0
+        const val AUDIO_TRACK_ID = 1
     }
 }

@@ -5,8 +5,11 @@ import android.media.MediaFormat
 import android.os.Handler
 import android.util.Log
 import com.pntt3011.cameraserver.server.packetizer.AACLATMPacketizer
+import com.pntt3011.cameraserver.server.packetizer.H265Packetizer
 import com.pntt3011.cameraserver.server.rtp.RTPSession
 import com.pntt3011.cameraserver.server.rtsp.RTSPServer
+import com.pntt3011.cameraserver.server.rtsp.RTSPServer.Companion.AUDIO_TRACK_ID
+import com.pntt3011.cameraserver.server.rtsp.RTSPServer.Companion.VIDEO_TRACK_ID
 import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
@@ -15,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class MainServer(
     private val rtspPort: Int,
-    private val rtpPort: Int,
+    private val rtpPort: IntArray,
     private val workerHandler: Handler,
     private val onClosed: () -> Unit,
 ) {
@@ -32,11 +35,22 @@ class MainServer(
         }
     }
     private val rtpSessions = mutableMapOf<String, RTPSession>()
-    private val audioPacketizer by lazy {
-        AACLATMPacketizer(rtpPort)
+    private val packetizers by lazy {
+        Array(2) {
+            if (it == VIDEO_TRACK_ID) {
+                H265Packetizer()
+            } else {
+                AACLATMPacketizer()
+            }
+        }
     }
     private val rtspServer by lazy {
-        RTSPServer(rtspPort, connectionThreadPool, sessionHandler) {
+        RTSPServer(
+            rtspPort,
+            rtpPort,
+            connectionThreadPool,
+            sessionHandler
+        ) {
             isHttpStopped = true
             checkStop()
         }
@@ -47,11 +61,11 @@ class MainServer(
             override val handler: Handler
                 get() = workerHandler
 
-            override fun onNewSession(address: InetAddress, rtpPort: Int) {
+            override fun onNewSession(address: InetAddress, rtpPort: IntArray) {
                 startNewRtpSessionIfNeeded(address, rtpPort)
             }
 
-            override fun onDestroySession(address: InetAddress, rtpPort: Int) {
+            override fun onDestroySession(address: InetAddress, rtpPort: IntArray) {
                 val key = getRtpKey(address, rtpPort)
                 rtpSessions[key]?.stop()
             }
@@ -61,13 +75,22 @@ class MainServer(
         rtspServer.start()
     }
 
-    fun onAudioPrepared(mediaFormat: MediaFormat) {
-        audioPacketizer.onPrepared(mediaFormat)
-        rtspServer.onAudioPrepared(audioPacketizer.sdp)
+    fun onMediaPrepared(mediaFormat: MediaFormat, trackId: Int) {
+        packetizers.getOrNull(trackId)?.let {
+            it.onPrepared(mediaFormat)
+            rtspServer.onMediaPrepared(it.sdp, trackId)
+        }
     }
 
-    fun onAudioFrameReceived(byteBuffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
-        audioPacketizer.onAACFrameReceived(byteBuffer, bufferInfo)
+    fun onMediaPrepared(mediaBuffer: ByteBuffer, trackId: Int) {
+        packetizers.getOrNull(trackId)?.let {
+            it.onPrepared(mediaBuffer)
+            rtspServer.onMediaPrepared(it.sdp, trackId)
+        }
+    }
+
+    fun onFrameReceived(byteBuffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo, trackId: Int) {
+        packetizers.getOrNull(trackId)?.onFrameReceived(byteBuffer, bufferInfo)
     }
 
     fun stop() {
@@ -75,22 +98,22 @@ class MainServer(
         rtpSessions.values.forEach { it.stop() }
     }
 
-    private fun startNewRtpSessionIfNeeded(address: InetAddress, rtpPort: Int) {
-        val key = getRtpKey(address, rtpPort)
+    private fun startNewRtpSessionIfNeeded(clientAddress: InetAddress, clientRtpPort: IntArray) {
+        val key = getRtpKey(clientAddress, clientRtpPort)
         if (rtpSessions.containsKey(key)) {
             return
         }
 
         rtpSessions[key] = RTPSession(
-            address,
             rtpPort,
-            audioPacketizer,
+            clientAddress,
+            clientRtpPort,
+            packetizers,
             connectionThreadPool,
+            workerHandler,
         ) {
-            workerHandler.post {
-                rtpSessions.remove(key)
-                checkStop()
-            }
+            rtpSessions.remove(key)
+            checkStop()
         }.also { rtpSession ->
             rtpSession.start()
         }
@@ -106,7 +129,9 @@ class MainServer(
         }
     }
 
-    private fun getRtpKey(address: InetAddress, rtpPort: Int): String {
-        return "${address.hostAddress}:$rtpPort"
+    private fun getRtpKey(address: InetAddress, rtpPort: IntArray): String {
+        return "${address.hostAddress}:" +
+                "${rtpPort.getOrElse(VIDEO_TRACK_ID) { 0 }}:" +
+                "${rtpPort.getOrElse(AUDIO_TRACK_ID) { 0 }}"
     }
 }
