@@ -3,11 +3,9 @@ package com.pntt3011.cameraserver.server.packetizer
 import android.media.MediaCodec.BufferInfo
 import android.media.MediaFormat
 import java.nio.ByteBuffer
-import kotlin.random.Random
 
 class AACLATMPacketizer(port: Int): RTPPacketizer(port) {
     companion object {
-        private const val HEADER_SIZE = 12
         private const val AU_HEADER_SIZE = 4
         private const val PAYLOAD_TYPE = 96
         private const val SAMPLES_PER_FRAME = 1024 // Standard
@@ -47,13 +45,11 @@ class AACLATMPacketizer(port: Int): RTPPacketizer(port) {
                 "a=fmtp:$PAYLOAD_TYPE streamtype=5; profile-level-id=15; mode=AAC-hbr; config="+Integer.toHexString(config)+"; SizeLength=13; IndexLength=3; IndexDeltaLength=3;\r\n"
     }
 
-    override fun increaseTimestamp(oldTimestamp: Long): Long {
+    override fun increaseTimestamp(oldTimestamp: Int): Int {
         return oldTimestamp + SAMPLES_PER_FRAME
     }
 
-    private val ssrc = Random(123).nextInt()
-
-    override fun packetizeFrame(byteBuffer: ByteBuffer, bufferInfo: BufferInfo, timestamp: Long): Int {
+    override fun packetizeFrame(byteBuffer: ByteBuffer, bufferInfo: BufferInfo, timestamp: Int): Int {
         val length = bufferInfo.size + HEADER_SIZE + AU_HEADER_SIZE
         if (length > buffer.data.size) {
             buffer.data = ByteArray(length)
@@ -69,10 +65,10 @@ class AACLATMPacketizer(port: Int): RTPPacketizer(port) {
         buffer.data[6] = ((timestamp shr 8) and 0xFF).toByte()
         buffer.data[7] = (timestamp and 0xFF).toByte()
 
-        buffer.data[8] = ((ssrc shr 24) and 0xFF).toByte()
-        buffer.data[9] = ((ssrc shr 16) and 0xFF).toByte()
-        buffer.data[10] = ((ssrc shr 8) and 0xFF).toByte()
-        buffer.data[11] = (ssrc and 0xFF).toByte()
+        buffer.data[8] = 0 // Injected by each consumer
+        buffer.data[9] = 0 // Injected by each consumer
+        buffer.data[10] = 0 // Injected by each consumer
+        buffer.data[11] = 0 // Injected by each consumer
 
         // AU header length = 16 bits = 2 bytes (byte 14 + 15)
         buffer.data[12] = 0

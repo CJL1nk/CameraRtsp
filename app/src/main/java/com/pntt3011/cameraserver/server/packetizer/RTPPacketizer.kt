@@ -10,15 +10,21 @@ abstract class RTPPacketizer(
     class Buffer(
         var data: ByteArray,
         var length: Int,
-        var timestamp: Long,
+        var timestamp: Int,
     ) {
         fun injectSeqNumber(seq: Int) {
             data[2] = ((seq shr 8) and 0xFF).toByte()
             data[3] = (seq and 0xFF).toByte()
         }
+        fun injectSrccNumber(ssrc: Int) {
+            data[8] = ((ssrc shr 24) and 0xFF).toByte()
+            data[9] = ((ssrc shr 16) and 0xFF).toByte()
+            data[10] = ((ssrc shr 8) and 0xFF).toByte()
+            data[11] = (ssrc and 0xFF).toByte()
+        }
     }
 
-    protected val buffer = Buffer(ByteArray(0), 0, 0L)
+    protected val buffer = Buffer(ByteArray(0), 0, 0)
     private var frameWaitThreadCount = 0
     private val frameLock = Any()
 
@@ -42,9 +48,9 @@ abstract class RTPPacketizer(
         }
     }
 
-    protected abstract fun increaseTimestamp(oldTimestamp: Long): Long
+    protected abstract fun increaseTimestamp(oldTimestamp: Int): Int
 
-    protected abstract fun packetizeFrame(byteBuffer: ByteBuffer, bufferInfo: BufferInfo, timestamp: Long): Int
+    protected abstract fun packetizeFrame(byteBuffer: ByteBuffer, bufferInfo: BufferInfo, timestamp: Int): Int
 
     fun getLastBuffer(currentBuffer: Buffer): Buffer {
         synchronized(frameLock) {
@@ -62,5 +68,9 @@ abstract class RTPPacketizer(
             currentBuffer.timestamp = buffer.timestamp
         }
         return currentBuffer
+    }
+
+    companion object {
+        const val HEADER_SIZE = 12
     }
 }

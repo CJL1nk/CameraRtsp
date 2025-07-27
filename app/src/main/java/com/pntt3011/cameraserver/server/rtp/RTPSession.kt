@@ -6,52 +6,50 @@ import com.pntt3011.cameraserver.server.packetizer.RTPPacketizer
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.SocketException
+import java.util.concurrent.ExecutorService
+import kotlin.random.Random
 
 class RTPSession(
-    private val ip: String,
-    private val port: Int,
+    private val clientAddress: InetAddress,
+    private val clientRtpPort: Int,
     private val audioPacketizer: AACLATMPacketizer,
-    private val rtcpValidation: RTCPValidation,
+    private val connectionThreadPool: ExecutorService,
     private val onClosed: (RTPSession) -> Unit
 ) {
-    @Volatile
-    private var isStopped = false
-
     private val socket by lazy {
         DatagramSocket()
     }
 
     fun start() {
-        Log.d("RTPSession", "Opening new session at ${ip}:${port}")
-        while (!isStopped) {
-            trySendAudio()
-            checkDisconnect()
+        connectionThreadPool.submit {
+            Log.d("RTPSession", "Opening new session at ${clientAddress}:${clientRtpPort}")
+            while (!socket.isClosed) {
+                try {
+                    trySendAudio()
+                } catch (e: SocketException) {
+                    break
+                }
+            }
+            Log.d("CleanUp", "gracefully clean up rtp session ${clientAddress}:${clientRtpPort}")
+            onClosed(this)
         }
-        socket.close()
-        Log.d("CleanUp", "gracefully clean up rtp session ${ip}:${port}")
-        onClosed(this)
     }
 
     private var audioSeq = ((Math.random() * 65536) % 65536).toInt()
-    private val audioBuffer = RTPPacketizer.Buffer(ByteArray(0), 0, 0L)
+    private val audioBuffer = RTPPacketizer.Buffer(ByteArray(0), 0, 0)
+    private val audioSsrc = Random(123).nextInt()
 
     private fun trySendAudio() {
         audioPacketizer.getLastBuffer(audioBuffer)
         audioBuffer.injectSeqNumber(audioSeq)
+        audioBuffer.injectSrccNumber(audioSsrc)
         audioSeq = (audioSeq + 1) % 65536
-        val packet = DatagramPacket(audioBuffer.data, audioBuffer.length, InetAddress.getByName(ip), port)
+        val packet = DatagramPacket(audioBuffer.data, audioBuffer.length, clientAddress, clientRtpPort)
         socket.send(packet)
     }
 
-    private fun checkDisconnect() {
-        val isDisconnected = !rtcpValidation.checkRtcpReport(ip)
-        if (isDisconnected) {
-            stop()
-            rtcpValidation.disconnect(ip)
-        }
-    }
-
     fun stop() {
-        isStopped = true
+        socket.close()
     }
 }

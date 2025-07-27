@@ -33,7 +33,7 @@ class MainController(context: Context) {
         }
     }
     private val server by lazy {
-        MainServer(8080, 5004, workerHandler) {
+        MainServer(8554, 5004, workerHandler) {
             stoppedServer = true
             checkStop()
         }
