@@ -6,7 +6,9 @@ import android.os.Handler
 import android.util.Log
 import com.pntt3011.cameraserver.server.packetizer.PacketizerPool
 import com.pntt3011.cameraserver.server.rtp.RTPSession
+import com.pntt3011.cameraserver.server.rtp.RTPTCPSession
 import com.pntt3011.cameraserver.server.rtsp.RTSPServer
+import java.io.OutputStream
 import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.util.concurrent.Executors
@@ -52,6 +54,15 @@ class MainServer(
 
             override fun onNewSession(address: InetAddress, trackInfos: Array<RTSPServer.TrackInfo>) {
                 startNewRtpSessionIfNeeded(address, trackInfos)
+            }
+
+            override fun onNewTcpSession(outputStream: OutputStream) {
+                RTPTCPSession(
+                    outputStream,
+                    trackInfos,
+                    packetizers,
+                    connectionThreadPool,
+                ).start()
             }
 
             override fun onDestroySession(address: InetAddress, trackInfos: Array<RTSPServer.TrackInfo>) {

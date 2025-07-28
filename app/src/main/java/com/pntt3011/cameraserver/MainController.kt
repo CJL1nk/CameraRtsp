@@ -36,8 +36,8 @@ class MainController(context: Context) {
     }
     private val server by lazy {
         MainServer(8554, arrayOf(
-            RTSPServer.TrackInfo(5004, true, workerHandler),
-            RTSPServer.TrackInfo(5006, false, workerHandler),
+            RTSPServer.TrackInfo(5004, true, 0, workerHandler),
+            RTSPServer.TrackInfo(5006, false, 2, workerHandler),
         ), workerHandler) {
             stoppedServer = true
             checkStop()

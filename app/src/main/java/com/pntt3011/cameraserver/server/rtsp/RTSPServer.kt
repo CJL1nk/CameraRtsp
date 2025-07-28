@@ -3,6 +3,7 @@ package com.pntt3011.cameraserver.server.rtsp
 import android.os.Handler
 import android.util.Log
 import com.pntt3011.cameraserver.monitor.TrackPerfMonitor
+import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -34,6 +35,7 @@ class RTSPServer(
     interface SessionHandler {
         val handler: Handler
         fun onNewSession(address: InetAddress, trackInfos: Array<TrackInfo>)
+        fun onNewTcpSession(outputStream: OutputStream)
         fun onDestroySession(address: InetAddress, trackInfos: Array<TrackInfo>)
     }
 
@@ -133,45 +135,25 @@ class RTSPServer(
                     }
 
                     requestLine.startsWith("SETUP", ignoreCase = true) -> {
-                        val transportLine = requestLines.find { it.startsWith("Transport:") }
-                        val ports = Regex("client_port=(\\d+)-(\\d+)").find(transportLine ?: "")
-                        val rtpPort = ports?.groupValues?.getOrNull(1)?.toIntOrNull()
-                        val rtcpPort = ports?.groupValues?.getOrNull(2)?.toIntOrNull()
-                        if (rtpPort == null || rtcpPort == null || trackId == null) {
-                            "RTSP/1.0 400 Bad Request\r\n" +
-                                    "CSeq: $cseq\r\n" +
-                                    "\r\n"
-                        } else {
-                            val serverPort = trackInfos[trackId].serverRtpPort
-                            trackInfos[trackId].clientRtpPort = rtpPort
-                            "RTSP/1.0 200 OK\r\n" +
-                                    "CSeq: $cseq\r\n" +
-                                    "Transport: RTP/AVP;unicast;client_port=$rtpPort-$rtcpPort;server_port=${serverPort}-${serverPort+1}\r\n" +
-                                    "Session: $sessionId\r\n" +
-                                    "\r\n"
-                        }
+                        val interleave = trackInfos[trackId ?: 0].interleave
+                        "RTSP/1.0 200 OK\r\n" +
+                                "CSeq: $cseq\r\n" +
+                                "Transport: Transport: RTP/AVP/TCP;interleaved=$interleave-${interleave+1};unicast\r\n" +
+                                "Session: $sessionId\r\n" +
+                                "\r\n"
                     }
 
                     requestLine.startsWith("PLAY", ignoreCase = true) -> {
-                        if (trackInfos.any { it.clientRtpPort == 0 } ) {
-                            "RTSP/1.0 400 Bad Request\r\n" +
-                                    "CSeq: $cseq\r\n" +
-                                    "\r\n"
-                        } else {
-                            sessionHandler.handler.post {
-                                sessionHandler.onNewSession(clientAddress, trackInfos)
-                            }
-                            "RTSP/1.0 200 OK\r\n" +
-                                    "CSeq: $cseq\r\n" +
-                                    "Session: $sessionId\r\n" +
-                                    "\r\n"
+                        sessionHandler.handler.post {
+                            sessionHandler.onNewTcpSession(socket.getOutputStream())
                         }
+                        "RTSP/1.0 200 OK\r\n" +
+                                "CSeq: $cseq\r\n" +
+                                "Session: $sessionId\r\n" +
+                                "\r\n"
                     }
 
                     requestLine.startsWith("TEARDOWN", ignoreCase = true) -> {
-                        sessionHandler.handler.post {
-                            sessionHandler.onDestroySession(clientAddress, trackInfos)
-                        }
                         isClientStopped = true
                         "RTSP/1.0 200 OK\r\n" +
                                 "CSeq: $cseq\r\n" +
@@ -180,9 +162,7 @@ class RTSPServer(
                     }
 
                     else -> {
-                        "RTSP/1.0 501 Not Implemented\r\n" +
-                                "CSeq: $cseq\r\n" +
-                                "\r\n"
+                        continue
                     }
                 }
                 Log.d("RTSPServer", "response to $sessionId: $response")
@@ -221,7 +201,7 @@ class RTSPServer(
         return general + trackSpecific
     }
 
-    class TrackInfo(val serverRtpPort: Int, val isVideo: Boolean, handler: Handler) {
+    class TrackInfo(val serverRtpPort: Int, val isVideo: Boolean, val interleave: Int, handler: Handler) {
         var clientRtpPort = 0
         var sdp = ""
         val perfMonitor = TrackPerfMonitor(isVideo, handler)
