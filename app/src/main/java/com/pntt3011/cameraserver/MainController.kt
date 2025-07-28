@@ -9,8 +9,7 @@ import android.os.Looper
 import android.os.Message
 import android.util.Log
 import com.pntt3011.cameraserver.server.MainServer
-import com.pntt3011.cameraserver.server.rtsp.RTSPServer.Companion.AUDIO_TRACK_ID
-import com.pntt3011.cameraserver.server.rtsp.RTSPServer.Companion.VIDEO_TRACK_ID
+import com.pntt3011.cameraserver.server.rtsp.RTSPServer
 import com.pntt3011.cameraserver.source.AudioSource
 import com.pntt3011.cameraserver.source.CameraSource
 import com.pntt3011.cameraserver.source.SourceCallback
@@ -35,7 +34,9 @@ class MainController(context: Context) {
         }
     }
     private val server by lazy {
-        MainServer(8554, intArrayOf(5004, 5006), workerHandler) {
+        MainServer(8554, arrayOf(
+            RTSPServer.TrackInfo(5004, false)
+        ), workerHandler) {
             stoppedServer = true
             checkStop()
         }
@@ -50,11 +51,11 @@ class MainController(context: Context) {
             }
 
             override fun onPrepared(buffer: ByteBuffer) {
-                server.onMediaPrepared(buffer, VIDEO_TRACK_ID)
+                server.onMediaPrepared(buffer, true)
             }
 
             override fun onFrameAvailable(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
-                server.onFrameReceived(buffer, bufferInfo, VIDEO_TRACK_ID)
+                server.onFrameReceived(buffer, bufferInfo, true)
             }
 
             override fun onClosed() {
@@ -69,7 +70,7 @@ class MainController(context: Context) {
                 get() = workerHandler
 
             override fun onPrepared(format: MediaFormat) {
-                server.onMediaPrepared(format, AUDIO_TRACK_ID)
+                server.onMediaPrepared(format, false)
             }
 
             override fun onPrepared(buffer: ByteBuffer) {
@@ -77,7 +78,7 @@ class MainController(context: Context) {
             }
 
             override fun onFrameAvailable(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
-                server.onFrameReceived(buffer, bufferInfo, AUDIO_TRACK_ID)
+                server.onFrameReceived(buffer, bufferInfo, false)
             }
 
             override fun onClosed() {

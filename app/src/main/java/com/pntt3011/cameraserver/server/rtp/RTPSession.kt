@@ -2,8 +2,9 @@ package com.pntt3011.cameraserver.server.rtp
 
 import android.os.Handler
 import android.util.Log
+import com.pntt3011.cameraserver.server.packetizer.PacketizerPool
 import com.pntt3011.cameraserver.server.packetizer.RTPPacketizer
-import com.pntt3011.cameraserver.server.rtsp.RTSPServer.Companion.VIDEO_TRACK_ID
+import com.pntt3011.cameraserver.server.rtsp.RTSPServer
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -12,48 +13,44 @@ import java.util.concurrent.ExecutorService
 import kotlin.random.Random
 
 class RTPSession(
-    private val serverRtpPort: IntArray,
     private val clientAddress: InetAddress,
-    private val clientRtpPort: IntArray,
-    private val packetizers: Array<RTPPacketizer>,
+    private val trackInfos: Array<RTSPServer.TrackInfo>,
+    private val packetizerPool: PacketizerPool,
     private val connectionThreadPool: ExecutorService,
     private val handler: Handler,
     private val onClosed: (RTPSession) -> Unit
 ) {
-    init {
-        assert(serverRtpPort.size == clientRtpPort.size)
-    }
     private val socket by lazy {
-        Array(serverRtpPort.size) {
-            DatagramSocket(serverRtpPort[it])
+        Array(trackInfos.size) {
+            DatagramSocket(trackInfos[it].serverRtpPort)
         }
     }
-    private val seq = Array(serverRtpPort.size) {
+    private val seq = Array(trackInfos.size) {
         ((Math.random() * 65536) % 65536).toInt()
     }
-    private val buffer = Array(serverRtpPort.size) {
+    private val buffer = Array(trackInfos.size) {
         RTPPacketizer.FramePacket()
     }
-    private val ssrc = Array(serverRtpPort.size) {
+    private val ssrc = Array(trackInfos.size) {
         Random(123 + it).nextInt()
     }
 
     fun start() {
-        serverRtpPort.indices.forEach {
+        trackInfos.forEachIndexed { index, trackInfo ->
             connectionThreadPool.submit {
-                startServer(it)
+                startServer(index, trackInfo)
             }
         }
     }
 
-    private fun startServer(trackId: Int) {
-        val clientPort = clientRtpPort[trackId]
+    private fun startServer(index: Int, trackInfo: RTSPServer.TrackInfo) {
+        val clientPort = trackInfo.clientRtpPort
         val clientAddress = clientAddress
-        val trackName = if (trackId == VIDEO_TRACK_ID) "video" else "audio"
+        val trackName = if (trackInfo.isVideo) "video" else "audio"
         Log.d("RTPSession", "Streaming $trackName at ${clientAddress}:${clientPort}")
-        while (!socket[trackId].isClosed) {
+        while (!socket[index].isClosed) {
             try {
-                trySendData(trackId)
+                trySendData(index, trackInfo)
             } catch (e: SocketException) {
                 break
             }
@@ -62,19 +59,19 @@ class RTPSession(
         checkClose()
     }
 
-    private fun trySendData(trackId: Int) {
-        buffer[trackId].apply {
-            packetizers[trackId].awaitFramePacket(this)
+    private fun trySendData(index: Int, trackInfo: RTSPServer.TrackInfo) {
+        buffer[index].apply {
+            packetizerPool.get(trackInfo.isVideo).awaitFramePacket(this)
             for (i in 0 until numPacket) {
-                inject(seq[trackId], ssrc[trackId])
+                inject(seq[index], ssrc[index])
                 val packet = DatagramPacket(
                     rtpPacket[i].data,
                     rtpPacket[i].size,
                     clientAddress,
-                    clientRtpPort[trackId]
+                    trackInfo.clientRtpPort,
                 )
-                socket[trackId].send(packet)
-                seq[trackId] = (seq[trackId] + 1) % 65536
+                socket[index].send(packet)
+                seq[index] = (seq[index] + 1) % 65536
             }
         }
     }
