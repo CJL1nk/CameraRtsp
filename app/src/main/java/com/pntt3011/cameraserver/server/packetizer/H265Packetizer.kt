@@ -2,7 +2,6 @@ package com.pntt3011.cameraserver.server.packetizer
 
 import android.media.MediaCodec
 import android.util.Base64
-import android.util.Log
 import java.nio.ByteBuffer
 
 class H265Packetizer : RTPPacketizer() {

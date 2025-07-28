@@ -48,6 +48,7 @@ class RTPSession(
         val clientAddress = clientAddress
         val trackName = if (trackInfo.isVideo) "video" else "audio"
         Log.d("RTPSession", "Streaming $trackName at ${clientAddress}:${clientPort}")
+        packetizerPool.get(trackInfo.isVideo).addTrackPerf(trackInfo.perfMonitor)
         while (!socket[index].isClosed) {
             try {
                 trySendData(index, trackInfo)
@@ -55,6 +56,7 @@ class RTPSession(
                 break
             }
         }
+        packetizerPool.get(trackInfo.isVideo).removeTrackPef(trackInfo.perfMonitor)
         Log.d("CleanUp", "gracefully clean up $trackName stream ${clientAddress}:${clientPort}")
         checkClose()
     }
@@ -73,6 +75,7 @@ class RTPSession(
                 socket[index].send(packet)
                 seq[index] = (seq[index] + 1) % 65536
             }
+            trackInfo.perfMonitor.onFrameSend(frameTimestampUs)
         }
     }
 

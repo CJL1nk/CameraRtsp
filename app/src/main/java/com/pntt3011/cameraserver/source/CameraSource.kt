@@ -62,7 +62,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
         var width = 1088
         var height = 1088
         val bitrate = 2_000_000
-        val iFrameInterval = 5
+        val iFrameInterval = 1
         val profile = 1
         val level = 2097152
     }

@@ -2,6 +2,7 @@ package com.pntt3011.cameraserver.server.rtsp
 
 import android.os.Handler
 import android.util.Log
+import com.pntt3011.cameraserver.monitor.TrackPerfMonitor
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -220,8 +221,9 @@ class RTSPServer(
         return general + trackSpecific
     }
 
-    class TrackInfo(val serverRtpPort: Int, val isVideo: Boolean) {
+    class TrackInfo(val serverRtpPort: Int, val isVideo: Boolean, handler: Handler) {
         var clientRtpPort = 0
         var sdp = ""
+        val perfMonitor = TrackPerfMonitor(isVideo, handler)
     }
 }

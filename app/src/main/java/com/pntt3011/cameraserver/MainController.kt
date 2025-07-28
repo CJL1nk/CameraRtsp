@@ -8,6 +8,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.Message
 import android.util.Log
+import com.pntt3011.cameraserver.monitor.TemperatureMonitor
 import com.pntt3011.cameraserver.server.MainServer
 import com.pntt3011.cameraserver.server.rtsp.RTSPServer
 import com.pntt3011.cameraserver.source.AudioSource
@@ -35,7 +36,8 @@ class MainController(context: Context) {
     }
     private val server by lazy {
         MainServer(8554, arrayOf(
-            RTSPServer.TrackInfo(5004, false)
+            RTSPServer.TrackInfo(5004, true, workerHandler),
+            RTSPServer.TrackInfo(5006, false, workerHandler),
         ), workerHandler) {
             stoppedServer = true
             checkStop()
@@ -93,12 +95,14 @@ class MainController(context: Context) {
         server.start()
         audioSource.start()
         cameraSource.start()
+        temperatureMonitor.start()
     }
 
     fun stop() {
         server.stop()
         audioSource.stop()
         cameraSource.stop()
+        temperatureMonitor.stop()
     }
 
     private var stoppedVideo = false
@@ -123,5 +127,9 @@ class MainController(context: Context) {
         workerHandler.post {
             System.loadLibrary("cameraserver")
         }
+    }
+
+    private val temperatureMonitor by lazy {
+        TemperatureMonitor(context, workerHandler)
     }
 }

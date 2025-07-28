@@ -2,8 +2,9 @@ package com.pntt3011.cameraserver.server.packetizer
 
 import android.media.MediaCodec.BufferInfo
 import android.media.MediaFormat
-import android.util.Log
+import com.pntt3011.cameraserver.monitor.TrackPerfMonitor
 import java.nio.ByteBuffer
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.random.Random
 import kotlin.random.nextUInt
 
@@ -23,8 +24,10 @@ abstract class RTPPacketizer {
     open fun onPrepared(mediaBuffer: ByteBuffer) {}
 
     fun onFrameReceived(byteBuffer: ByteBuffer, bufferInfo: BufferInfo) {
+        perfMonitors.forEach { it.onFrameAvailable(bufferInfo.presentationTimeUs) }
         synchronized(frameLock) {
-            framePacket.timestamp = increaseTimestamp(framePacket.timestamp, bufferInfo.presentationTimeUs)
+            framePacket.frameTimestampUs = bufferInfo.presentationTimeUs
+            framePacket.rtpTimestamp = increaseTimestamp(framePacket.rtpTimestamp, bufferInfo.presentationTimeUs)
             framePacket.numPacket = packetizeFrame(framePacket, byteBuffer, bufferInfo)
             if (frameWaitThreadCount > 0) {
                 frameWaitThreadCount = 0
@@ -50,10 +53,10 @@ abstract class RTPPacketizer {
 
     fun awaitFramePacket(current: FramePacket): FramePacket {
         synchronized(frameLock) {
-            if (current.timestamp >= framePacket.timestamp) {
+            if (current.rtpTimestamp >= framePacket.rtpTimestamp) {
                 frameWaitThreadCount += 1
             }
-            while (current.timestamp >= framePacket.timestamp) {
+            while (current.rtpTimestamp >= framePacket.rtpTimestamp) {
                 (frameLock as Object).wait()
             }
             framePacket.clone(current)
@@ -62,18 +65,20 @@ abstract class RTPPacketizer {
     }
 
     class FramePacket(
-        var timestamp: UInt = 0u,
+        var rtpTimestamp: UInt = 0u,
         val rtpPacket: MutableList<RtpPacket> = mutableListOf(),
         var numPacket: Int = 0,
+        var frameTimestampUs: Long = 0L,
     ) {
         fun inject(seq: Int, ssrc: Int) {
             for (i in 0 until numPacket) {
-                rtpPacket[i].inject(timestamp, seq, ssrc)
+                rtpPacket[i].inject(rtpTimestamp, seq, ssrc)
             }
         }
         fun clone(dest: FramePacket) {
-            dest.timestamp = timestamp
+            dest.rtpTimestamp = rtpTimestamp
             dest.numPacket = numPacket
+            dest.frameTimestampUs = frameTimestampUs
             for (i in dest.rtpPacket.size until numPacket) {
                 dest.rtpPacket.add(RtpPacket())
             }
@@ -105,6 +110,16 @@ abstract class RTPPacketizer {
             data[10] = ((ssrc shr 8) and 0xFF).toByte()
             data[11] = (ssrc and 0xFF).toByte()
         }
+    }
+
+    private val perfMonitors = CopyOnWriteArrayList<TrackPerfMonitor>()
+
+    fun addTrackPerf(trackPerfMonitor: TrackPerfMonitor) {
+        perfMonitors.add(trackPerfMonitor)
+    }
+
+    fun removeTrackPef(trackPerfMonitor: TrackPerfMonitor) {
+        perfMonitors.remove(trackPerfMonitor)
     }
 
     companion object {
