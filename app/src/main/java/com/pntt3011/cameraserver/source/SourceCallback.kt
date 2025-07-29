@@ -8,7 +8,5 @@ import java.nio.ByteBuffer
 interface SourceCallback {
     val handler: Handler
     fun onPrepared(format: MediaFormat)
-    fun onPrepared(buffer: ByteBuffer)
-    fun onFrameAvailable(buffer: ByteBuffer, bufferInfo: BufferInfo)
     fun onClosed()
 }

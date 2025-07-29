@@ -8,6 +8,7 @@ import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaRecorder
 import android.util.Log
+import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -22,10 +23,6 @@ class AudioSource(private val callback: SourceCallback) {
     private val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat) * 4
     @Volatile
     private var isRecording = false
-
-    private val frameQueue by lazy {
-        AudioFrameQueue(callback)
-    }
 
     fun start() {
         if (isRecording) return
@@ -48,6 +45,7 @@ class AudioSource(private val callback: SourceCallback) {
 
     @SuppressLint("MissingPermission")
     private fun startRecording() {
+
         val audioRecord = AudioRecord(
             MediaRecorder.AudioSource.MIC,
             sampleRate,
@@ -57,6 +55,7 @@ class AudioSource(private val callback: SourceCallback) {
         )
 
         audioRecord.startRecording()
+        startNative()
 
         val format = MediaFormat.createAudioFormat("audio/mp4a-latm", sampleRate, channelCount)
         format.setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
@@ -101,7 +100,7 @@ class AudioSource(private val callback: SourceCallback) {
                         val outputBuffer = codec.getOutputBuffer(outputIndex) ?: break
                         outputBuffer.position(bufferInfo.offset)
                         outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                        frameQueue.onFrameAvailable(outputBuffer, bufferInfo)
+                        onFrameAvailableNative(outputBuffer, bufferInfo.offset, bufferInfo.size, bufferInfo.presentationTimeUs, bufferInfo.flags)
                         codec.releaseOutputBuffer(outputIndex, false)
 
                         if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -120,7 +119,9 @@ class AudioSource(private val callback: SourceCallback) {
         audioRecord.stop()
         audioRecord.release()
 
-        Log.d("CleanUp", "gracefully clean up audio")
+        stopNative()
+
+        Log.d("CleanUp", "gracefully clean up audio source")
     }
 
 
@@ -128,9 +129,12 @@ class AudioSource(private val callback: SourceCallback) {
         if (!isRecording) return
         isRecording = false
         callback.handler.post {
-            frameQueue.stop()
             encodeExecutor?.awaitTermination(1, TimeUnit.SECONDS)
             callback.onClosed()
         }
     }
+
+    private external fun startNative()
+    private external fun stopNative()
+    private external fun onFrameAvailableNative(buffer: ByteBuffer, offset: Int, size: Int, time: Long, flags: Int)
 }

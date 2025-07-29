@@ -49,15 +49,7 @@ class MainController(context: Context) {
                 get() = workerHandler
 
             override fun onPrepared(format: MediaFormat) {
-                // Do nothing
-            }
-
-            override fun onPrepared(buffer: ByteBuffer) {
-                server.onMediaPrepared(buffer, true)
-            }
-
-            override fun onFrameAvailable(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
-                server.onFrameReceived(buffer, bufferInfo, true)
+                server.onMediaPrepared(format, true)
             }
 
             override fun onClosed() {

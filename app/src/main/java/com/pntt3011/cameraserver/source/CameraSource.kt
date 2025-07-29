@@ -21,7 +21,6 @@ import android.opengl.EGLExt.EGL_RECORDABLE_ANDROID
 import android.opengl.EGLSurface
 import android.opengl.GLES11Ext
 import android.opengl.GLES31
-import android.util.Base64
 import android.util.Log
 import android.util.Range
 import android.view.Surface
@@ -110,6 +109,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
         val outputSurface = encoder.createInputSurface()
         this.encoder = encoder
         encoder.start()
+        startNative()
         isEncoderRunning = true
         eglSetup(outputSurface)
         makeCurrent()
@@ -404,11 +404,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
                 if (bufferInfo.size > 0) {
                     encodedData.position(bufferInfo.offset)
                     encodedData.limit(bufferInfo.offset + bufferInfo.size)
-                    if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
-                        cameraCallback.onFrameAvailable(encodedData, bufferInfo)
-                    } else {
-                        cameraCallback.onPrepared(encodedData)
-                    }
+                    onFrameAvailableNative(encodedData, bufferInfo.offset, bufferInfo.size, bufferInfo.presentationTimeUs, bufferInfo.flags)
                     // Important: mark the buffer as processed
                     encoder.releaseOutputBuffer(outputIndex, false)
                 }
@@ -441,6 +437,8 @@ class CameraSource(context: Context, callback: SourceCallback) {
         encoder?.release()
         encoder = null
 
+        stopNative()
+
         releaseGlProgram()
 
         if (eglDisplay !== EGL14.EGL_NO_DISPLAY) {
@@ -461,7 +459,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
         inputSurfaceTexture?.release()
         inputSurfaceTexture = null
 
-        Log.d("CleanUp", "gracefully clean up video")
+        Log.d("CleanUp", "gracefully clean up video source")
     }
 
     private val vertexData = floatArrayOf(
@@ -522,6 +520,9 @@ class CameraSource(context: Context, callback: SourceCallback) {
         fragmentShader = 0
     }
 
+    private external fun startNative()
+    private external fun stopNative()
+    private external fun onFrameAvailableNative(buffer: ByteBuffer, offset: Int, size: Int, time: Long, flags: Int)
 
     companion object {
         const val DEFAULT_VERTEX_SHADER = "" +
