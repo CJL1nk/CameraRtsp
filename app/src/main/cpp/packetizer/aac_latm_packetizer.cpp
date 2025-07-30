@@ -2,7 +2,7 @@
 #include <random>
 
 
-int32_t AacLatmPacketizer::packetizeFrame(int32_t seq, uint32_t timestamp, const AacLatmPacketizer::Frame &src,
+int32_t AacLatmPacketizer::packetizeFrame(uint16_t seq, uint32_t timestamp, const AacLatmPacketizer::Frame &src,
                                           uint8_t *dst, size_t dst_size) const {
 
     size_t packet_size = RTP_HEADER_SIZE + AAC_AU_HEADER_SIZE + AAC_AU_SIZE + src.size;

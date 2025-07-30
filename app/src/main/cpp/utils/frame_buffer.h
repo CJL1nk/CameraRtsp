@@ -14,5 +14,29 @@ struct FrameBuffer {
     FrameBuffer(int64_t t, size_t s, int32_t f)
             : presentation_time_us(t), size(s), flags(f) {}
     ~FrameBuffer() = default;
+
+    bool operator==(const FrameBuffer& other) const {
+        return presentation_time_us == other.presentation_time_us;
+    }
+
+    bool operator!=(const FrameBuffer& other) const {
+        return presentation_time_us != other.presentation_time_us;
+    }
+
+    bool operator<(const FrameBuffer& other) const {
+        return presentation_time_us < other.presentation_time_us;
+    }
+
+    bool operator<=(const FrameBuffer& other) const {
+        return presentation_time_us <= other.presentation_time_us;
+    }
+
+    bool operator>(const FrameBuffer& other) const {
+        return presentation_time_us > other.presentation_time_us;
+    }
+
+    bool operator>=(const FrameBuffer& other) const {
+        return presentation_time_us >= other.presentation_time_us;
+    }
 };
 

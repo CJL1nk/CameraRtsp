@@ -7,7 +7,6 @@
 #include "utils/circular_deque.h"
 #include "utils/memory_pool.h"
 
-#define LOG_TAG "NativeAudioFrameQueue"
 #define MAX_AUDIO_FRAME_QUEUE_SIZE 10 // 200ms delay is enough
 
 class NativeAudioFrameQueue {

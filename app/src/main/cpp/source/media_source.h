@@ -13,14 +13,9 @@ public:
     public:
         virtual void onFrameAvailable(const FrameBuffer<BufferCapacity> &info) = 0;
     };
-    struct FrameInfo {
-        FrameBuffer<BufferCapacity> current_frame{};
-        FrameBuffer<BufferCapacity> current_key_frame{};
-    };
     virtual void start() = 0;
     virtual void onFrameAvailable(const FrameBuffer<BufferCapacity> &info) = 0;
     virtual void stop() = 0;
-    virtual FrameInfo getCurrentFrame() = 0;
     virtual bool addListener(FrameListener *listener) = 0;
     virtual bool removeListener(FrameListener *listener) = 0;
     virtual ~NativeMediaSource() = default;

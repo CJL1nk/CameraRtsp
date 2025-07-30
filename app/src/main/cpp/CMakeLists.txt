@@ -14,6 +14,9 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         rtp_server.cpp
         packetizer/aac_latm_packetizer.cpp
         packetizer/h265_packetizer.cpp
+        server/audio_stream.cpp
+        server/video_stream.cpp
+        server/rtp_session.cpp
         source/audio_frame_queue.cpp
         source/audio_source.cpp
         source/video_source.cpp

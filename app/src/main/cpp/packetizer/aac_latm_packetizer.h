@@ -15,7 +15,7 @@ public:
     explicit AacLatmPacketizer(uint8_t itl, int32_t ssrc) : interleave_(itl), ssrc_(ssrc) {}
     ~AacLatmPacketizer() = default;
     int32_t packetizeFrame(
-        int32_t seq, uint32_t timestamp,
+        uint16_t seq, uint32_t timestamp,
         const Frame& src,
         uint8_t* dst, size_t dst_size
     ) const;

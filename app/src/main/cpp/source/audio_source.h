@@ -18,12 +18,9 @@ public:
     void start() override;
     void onFrameAvailable(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &info) override;
     void stop() override;
-    FrameInfo getCurrentFrame() override;
     bool addListener(NativeMediaSource::FrameListener *listener) override;
     bool removeListener(NativeMediaSource::FrameListener *listener) override;
 private:
-    FrameInfo current_frame_;
-    std::mutex mutex_;
     NativeAudioFrameQueue frame_queue_;
     NativeMediaSource::FrameListener* listeners_[MAX_AUDIO_LISTENER] { nullptr };
 
@@ -32,3 +29,5 @@ private:
         static_cast<NativeAudioSource*>(context)->processQueuedFrame(frame);
     }
 };
+
+static NativeAudioSource *g_audio_source = nullptr;

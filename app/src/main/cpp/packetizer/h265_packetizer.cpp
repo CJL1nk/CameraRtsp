@@ -7,15 +7,15 @@
 
 
 int32_t
-H265Packetizer::packetizeFrame(int32_t seq, uint32_t timestamp,
+H265Packetizer::packetizeFrame(uint16_t seq, uint32_t timestamp,
                                const H265Packetizer::Frame &src, size_t &src_offset, const NalUnit& current_nal,
                                uint8_t *dst, size_t dst_size) const {
     size_t header_size = RTP_HEADER_SIZE + PAYLOAD_HEADER_SIZE;
 
-    if (src_offset < current_nal.start
-        || src_offset >= current_nal.end
-        || current_nal.end > src.size
-        || TCP_PREFIX_SIZE + header_size >= dst_size
+    if (src_offset < current_nal.start ||
+        src_offset >= current_nal.end ||
+        current_nal.end > src.sizz ||
+        TCP_PREFIX_SIZE + header_size >= dst_size
     ) {
         return -1;
     }
@@ -24,9 +24,10 @@ H265Packetizer::packetizeFrame(int32_t seq, uint32_t timestamp,
     bool is_single_mode = is_segment_start &&
             (TCP_PREFIX_SIZE + header_size + (current_nal.end - current_nal.start - current_nal.codeSize) <= dst_size);
     bool is_segment_end = TCP_PREFIX_SIZE + header_size + FU_HEADER_SIZE + (current_nal.end - src_offset) <= dst_size;
-    size_t packet_size = is_single_mode ? header_size + (current_nal.end - current_nal.start - current_nal.codeSize)
-            : is_segment_end ? header_size + FU_HEADER_SIZE + (current_nal.end - src_offset)
-            : dst_size - TCP_PREFIX_SIZE;
+    size_t packet_size =
+            is_single_mode ? header_size + (current_nal.end - current_nal.start - current_nal.codeSize) :
+            is_segment_end ? header_size + FU_HEADER_SIZE + (current_nal.end - src_offset) :
+            dst_size - TCP_PREFIX_SIZE;
 
     size_t i = 0;
     dst[i++] = '$';
