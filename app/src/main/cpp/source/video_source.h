@@ -20,8 +20,12 @@ public:
     FrameInfo getCurrentFrame() override;
     bool addListener(NativeMediaSource::FrameListener *listener) override;
     bool removeListener(NativeMediaSource::FrameListener *listener) override;
+    char vps[64] {};
+    char sps[64] {};
+    char pps[64] {};
 private:
     FrameInfo current_frame_;
     std::mutex mutex_;
     NativeMediaSource::FrameListener* listeners_[MAX_VIDEO_LISTENER] { nullptr };
+    void parseParameterSets(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info);
 };

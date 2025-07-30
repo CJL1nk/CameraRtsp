@@ -1,10 +1,17 @@
 #include "video_source.h"
 
+#include "utils/base64.h"
+#include "utils/h265_nal_unit.h"
+
+#define NAL_TYPE(data, nal) ((data[nal.start + nal.codeSize] >> 1) & 0x3F)
+
 void NativeVideoSource::onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         current_frame_.current_frame = info;
-        // TODO: parse vps/sps/pps
+        if (info.flags & BUFFER_FLAG_CODEC_CONFIG) {
+            parseParameterSets(info);
+        }
         if (info.flags & BUFFER_FLAG_KEY_FRAME) {
             current_frame_.current_key_frame = info;
         }
@@ -39,6 +46,24 @@ bool NativeVideoSource::removeListener(NativeMediaSource::FrameListener *listene
         }
     }
     return false;
+}
+
+void NativeVideoSource::parseParameterSets(const FrameBuffer<102400> &info) {
+    auto nals = extractNalUnits<3>(info.data.data(), 0, info.size);
+    for (auto nal : nals) {
+        auto nal_type = NAL_TYPE(info.data, nal);
+        char* dst = nullptr;
+        if (nal_type == 32) {
+            dst = vps;
+        } else if (nal_type == 33) {
+            dst = sps;
+        } else if (nal_type == 34) {
+            dst = pps;
+        }
+        if (dst != nullptr) {
+            convertBase64(info.data.data(), nal.start, nal.end, dst);
+        }
+    }
 }
 
 static NativeVideoSource *g_video_source_ = nullptr;
