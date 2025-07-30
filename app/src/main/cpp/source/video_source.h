@@ -7,6 +7,7 @@
 #define MAX_VIDEO_FRAME_SIZE 102400 // Rare cases
 #define NORMAL_VIDEO_FRAME_SIZE 20480 // 2Mbps / 24 frames / 8 bits per byte
 #define MAX_VIDEO_LISTENER 2
+#define VIDEO_SAMPLE_RATE 90000 // H264/H265 standard
 
 
 class NativeVideoSource : public NativeMediaSource<MAX_VIDEO_FRAME_SIZE> {
