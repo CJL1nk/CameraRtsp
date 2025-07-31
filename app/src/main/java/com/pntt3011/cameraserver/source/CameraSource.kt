@@ -388,12 +388,6 @@ class CameraSource(context: Context, callback: SourceCallback) {
 
         val outputIndex = encoder.dequeueOutputBuffer(encoderOutputBufferInfo, 0)
         when {
-            outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
-            }
-            outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                val newFormat = encoder.outputFormat
-                cameraCallback.onPrepared(newFormat)
-            }
             outputIndex >= 0 -> {
                 val encodedData = encoder.getOutputBuffer(outputIndex)
                     ?: throw Exception("Encoder output buffer is null")

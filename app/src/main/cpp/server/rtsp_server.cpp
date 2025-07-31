@@ -283,3 +283,24 @@ size_t RTSPServer::prepareSdp(const char* client_ip, char* sdp_buffer, size_t bu
     sdp_buffer[offset++] = '\0';
     return offset;
 }
+
+static RTSPServer *g_rtsp_server = nullptr;
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_pntt3011_cameraserver_server_MainServer_startNative(JNIEnv *env, jobject thiz,
+                                                             jboolean start_video,
+                                                             jboolean start_audio) {
+    if (g_rtsp_server == nullptr) {
+        g_rtsp_server = new RTSPServer();
+    }
+    g_rtsp_server->start(start_video, start_audio);
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_pntt3011_cameraserver_server_MainServer_stopNative(JNIEnv *env, jobject thiz) {
+    if (g_rtsp_server != nullptr) {
+        g_rtsp_server->stop();
+        g_rtsp_server = nullptr;
+    }
+}

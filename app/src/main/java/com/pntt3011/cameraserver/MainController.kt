@@ -1,8 +1,6 @@
 package com.pntt3011.cameraserver
 
 import android.content.Context
-import android.media.MediaCodec
-import android.media.MediaFormat
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -10,11 +8,9 @@ import android.os.Message
 import android.util.Log
 import com.pntt3011.cameraserver.monitor.TemperatureMonitor
 import com.pntt3011.cameraserver.server.MainServer
-import com.pntt3011.cameraserver.server.rtsp.RTSPServer
 import com.pntt3011.cameraserver.source.AudioSource
 import com.pntt3011.cameraserver.source.CameraSource
 import com.pntt3011.cameraserver.source.SourceCallback
-import java.nio.ByteBuffer
 
 class MainController(context: Context) {
     private val mainHandler by lazy {
@@ -35,10 +31,7 @@ class MainController(context: Context) {
         }
     }
     private val server by lazy {
-        MainServer(8554, arrayOf(
-            RTSPServer.TrackInfo(5004, true, 0, workerHandler),
-            RTSPServer.TrackInfo(5006, false, 2, workerHandler),
-        ), workerHandler) {
+        MainServer(workerHandler) {
             stoppedServer = true
             checkStop()
         }
@@ -47,10 +40,6 @@ class MainController(context: Context) {
         CameraSource(context, object : SourceCallback {
             override val handler: Handler
                 get() = workerHandler
-
-            override fun onPrepared(format: MediaFormat) {
-                server.onMediaPrepared(format, true)
-            }
 
             override fun onClosed() {
                 stoppedVideo = true
@@ -63,18 +52,6 @@ class MainController(context: Context) {
             override val handler: Handler
                 get() = workerHandler
 
-            override fun onPrepared(format: MediaFormat) {
-                server.onMediaPrepared(format, false)
-            }
-
-            override fun onPrepared(buffer: ByteBuffer) {
-                // Do nothing
-            }
-
-            override fun onFrameAvailable(buffer: ByteBuffer, bufferInfo: MediaCodec.BufferInfo) {
-                server.onFrameReceived(buffer, bufferInfo, false)
-            }
-
             override fun onClosed() {
                 stoppedAudio = true
                 checkStop()
@@ -84,7 +61,7 @@ class MainController(context: Context) {
 
     fun start() {
         loadNativeLib()
-        server.start()
+        server.start(true, true)
         audioSource.start()
         cameraSource.start()
         temperatureMonitor.start()

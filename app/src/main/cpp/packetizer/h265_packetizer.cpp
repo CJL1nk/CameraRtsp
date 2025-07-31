@@ -14,7 +14,7 @@ H265Packetizer::packetizeFrame(uint16_t seq, uint32_t timestamp,
 
     if (src_offset < current_nal.start ||
         src_offset >= current_nal.end ||
-        current_nal.end > src.sizz ||
+        current_nal.end > src.size ||
         TCP_PREFIX_SIZE + header_size >= dst_size
     ) {
         return -1;

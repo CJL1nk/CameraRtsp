@@ -92,9 +92,6 @@ class AudioSource(private val callback: SourceCallback) {
             while (true) {
                 val outputIndex = codec.dequeueOutputBuffer(bufferInfo, 0)
                 when {
-                    outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                        callback.onPrepared(codec.outputFormat)
-                    }
                     outputIndex >= 0 &&
                             (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0 -> {
                         val outputBuffer = codec.getOutputBuffer(outputIndex) ?: break
