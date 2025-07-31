@@ -49,6 +49,8 @@ void VideoStream::onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info
 }
 
 void VideoStream::streaming() {
+    pthread_setname_np(pthread_self(), "VideoStream");
+
     auto seq = genSequenceNumber();
 
     while (running_.load()) {

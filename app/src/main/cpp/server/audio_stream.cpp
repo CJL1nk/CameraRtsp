@@ -44,6 +44,8 @@ void AudioStream::onFrameAvailable(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &info
 }
 
 void AudioStream::streaming() {
+    pthread_setname_np(pthread_self(), "AudioStream");
+
     auto seq = genSequenceNumber();
 
     while (running_.load()) {
