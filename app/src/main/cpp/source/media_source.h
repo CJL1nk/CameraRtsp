@@ -2,9 +2,7 @@
 
 #include <jni.h>
 #include "utils/frame_buffer.h"
-
-#define BUFFER_FLAG_KEY_FRAME 0x01
-#define BUFFER_FLAG_CODEC_CONFIG 0x02
+#include "utils/constant.h"
 
 template<size_t BufferCapacity>
 class NativeMediaSource {

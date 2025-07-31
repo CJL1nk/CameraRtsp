@@ -3,12 +3,7 @@
 #include <jni.h>
 #include <mutex>
 #include "source/media_source.h"
-
-#define MAX_VIDEO_FRAME_SIZE 102400 // Rare cases
-#define NORMAL_VIDEO_FRAME_SIZE 20480 // 2Mbps / 24 frames / 8 bits per byte
-#define MAX_VIDEO_LISTENER 2
-#define VIDEO_SAMPLE_RATE 90000 // H264/H265 standard
-
+#include "utils/constant.h"
 
 class NativeVideoSource : public NativeMediaSource<MAX_VIDEO_FRAME_SIZE> {
 public:
@@ -23,6 +18,7 @@ public:
     char sps[64] {};
     char pps[64] {};
 private:
+    static constexpr size_t MAX_VIDEO_LISTENER = 2;
     std::mutex listener_mutex_;
     NativeMediaSource::FrameListener* listeners_[MAX_VIDEO_LISTENER] { nullptr };
     void parseParameterSets(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info);

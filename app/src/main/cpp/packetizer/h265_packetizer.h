@@ -2,15 +2,10 @@
 
 #include <jni.h>
 #include <array>
-#include "packetizer/packetizer.h"
 #include "source/video_source.h"
 #include "utils/frame_buffer.h"
 #include "utils/h265_nal_unit.h"
-
-#define H265_PAYLOAD_TYPE 97
-#define PAYLOAD_HEADER_SIZE 2
-#define FU_HEADER_SIZE 1
-#define FRAGMENT_UNIT_PAYLOAD_TYPE 49
+#include "utils/constant.h"
 
 class H265Packetizer {
 public:
@@ -24,6 +19,10 @@ public:
     ) const;
 
 private:
+    static constexpr size_t PAYLOAD_HEADER_SIZE = 2;
+    static constexpr size_t FU_HEADER_SIZE = 1;
+    static constexpr size_t FRAGMENT_UNIT_PAYLOAD_TYPE = 49;
+
     uint8_t interleave_ = 0;
     int32_t ssrc_ = 0;
 };

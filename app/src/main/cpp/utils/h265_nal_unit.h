@@ -11,7 +11,7 @@ public:
     bool isValid() const { return end > start; }
 };
 
-static int findNalStart(const uint8_t* data, size_t start, size_t size) {
+static inline int findNalStart(const uint8_t* data, size_t start, size_t size) {
     for (size_t i = start; i + 3 < size; ++i) {
         if (data[i] == 0x00 && data[i + 1] == 0x00) {
             if (data[i + 2] == 0x01)

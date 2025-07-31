@@ -5,6 +5,7 @@
 #include "source/video_source.h"
 #include "utils/server_utils.h"
 #include "utils/stream_perf_monitor.h"
+#include "utils/server_utils.h"
 #include <mutex>
 #include <thread>
 #include <sys/socket.h>

@@ -1,0 +1,18 @@
+#pragma once
+
+#define BUFFER_FLAG_KEY_FRAME 0x01 // MediaCodec
+#define BUFFER_FLAG_CODEC_CONFIG 0x02 // MediaCodec
+
+#define AUDIO_SAMPLE_RATE 44100 // Config
+#define AUDIO_CHANNEL_COUNT 1 // Config
+#define MAX_AUDIO_FRAME_SIZE 512 // Double of NativeAudioFrameQueue::NORMAL_AUDIO_FRAME_SIZE
+#define AAC_PAYLOAD_TYPE 96
+
+#define VIDEO_SAMPLE_RATE 90000 // H264/H265 standard
+#define MAX_VIDEO_FRAME_SIZE 102400 // Rare cases
+#define H265_PAYLOAD_TYPE 97
+
+#define RTP_MAX_PACKET_SIZE 1024
+#define RTP_HEADER_SIZE 12
+#define TCP_PREFIX_SIZE 4
+#define RTP_VERSION 0x80

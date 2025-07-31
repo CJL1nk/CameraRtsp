@@ -88,11 +88,11 @@ void VideoStream::streaming() {
 
 int32_t
 VideoStream::trySendAndAdvance(uint16_t &seq, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame) {
-    auto rtp_ts = calculateRtpTimestamp(latest_keyframe_buffer_.presentation_time_us);
-    if (sendFrame(seq, rtp_ts, latest_keyframe_buffer_) < 0) {
+    auto rtp_ts = calculateRtpTimestamp(frame.presentation_time_us);
+    if (sendFrame(seq, rtp_ts, frame) < 0) {
         return -1;
     }
-    last_presentation_time_us_ = latest_keyframe_buffer_.presentation_time_us;
+    last_presentation_time_us_ = frame.presentation_time_us;
     last_rtp_ts_ = rtp_ts;
     seq = (seq + 1) % 65536;
     perf_monitor_.onFrameSend(last_presentation_time_us_);

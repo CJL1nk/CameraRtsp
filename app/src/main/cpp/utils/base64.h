@@ -1,12 +1,11 @@
 #pragma once
 
+#include "jni.h"
+
 static const char kBase64Table[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     "abcdefghijklmnopqrstuvwxyz"
     "0123456789+/";
-
-#include <cstddef>
-#include <cstdint>
 
 static void convertBase64(const uint8_t* data, size_t start, size_t end, char* dst) {
     size_t input_len = end - start;

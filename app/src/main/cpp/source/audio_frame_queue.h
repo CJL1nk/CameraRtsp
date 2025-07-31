@@ -3,11 +3,10 @@
 #include <thread>
 #include <deque>
 
-#include "source/audio_source.h"
 #include "utils/circular_deque.h"
+#include "utils/frame_buffer.h"
 #include "utils/memory_pool.h"
-
-#define MAX_AUDIO_FRAME_QUEUE_SIZE 10 // 200ms delay is enough
+#include "utils/constant.h"
 
 class NativeAudioFrameQueue {
 public:
@@ -19,6 +18,9 @@ public:
     void enqueueFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &frame);
 
 private:
+    static constexpr size_t MAX_AUDIO_FRAME_QUEUE_SIZE = 30; // media codec batches 15 frames per encode
+    static constexpr size_t NORMAL_AUDIO_FRAME_SIZE = 256; // 64kbps / (44100Hz / 1024 samples per frame) frames / 8 bits per byte
+
     // State
     std::atomic<bool> running_ = false;
 

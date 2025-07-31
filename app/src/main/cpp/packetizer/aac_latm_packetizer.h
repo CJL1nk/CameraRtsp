@@ -1,13 +1,9 @@
 #pragma once
 
 #include <jni.h>
-#include "packetizer/packetizer.h"
 #include "source/audio_source.h"
 #include "utils/frame_buffer.h"
-
-#define AAC_AU_HEADER_SIZE 2
-#define AAC_AU_SIZE 2
-#define AAC_PAYLOAD_TYPE 96
+#include "utils/constant.h"
 
 class AacLatmPacketizer {
 public:
@@ -21,6 +17,9 @@ public:
     ) const;
 
 private:
+    static constexpr size_t AAC_AU_HEADER_SIZE = 2;
+    static constexpr size_t AAC_AU_SIZE = 2;
+
     uint8_t interleave_ = 0;
     int32_t ssrc_ = 0;
 };

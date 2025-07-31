@@ -5,6 +5,7 @@
 #include "source/audio_source.h"
 #include "utils/server_utils.h"
 #include "utils/stream_perf_monitor.h"
+#include "utils/constant.h"
 #include <mutex>
 #include <thread>
 #include <sys/socket.h>

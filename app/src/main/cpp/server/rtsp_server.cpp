@@ -132,7 +132,7 @@ void RTSPServer::handleClient(int32_t session_id, int32_t client, sockaddr_in cl
         char* token = strtok(receive_buffer, "\r\n");
         while (token && lineCount < MAX_LINES) {
             lines[lineCount++] = token;
-            token = strtok(nullptr, "\r\n");
+            token = strtok(nullptr, "\r\n"); // Continue from last buffer
         }
         if (lineCount == 0) continue;
 
