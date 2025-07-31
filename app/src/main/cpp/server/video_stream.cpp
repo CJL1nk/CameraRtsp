@@ -6,7 +6,7 @@
 
 #define LOG_TAG "VideoStream"
 
-void VideoStream::start(int32_t socket) {
+void VideoStream::start(int32_t socket, uint8_t itl) {
     if (running_.exchange(true)) {
         return; // Already running
     }
@@ -14,6 +14,7 @@ void VideoStream::start(int32_t socket) {
         g_video_source->addListener(this);
     }
     socket_ = socket;
+    interleave_ = itl;
     thread_ = std::thread(&VideoStream::streaming, this);
 }
 

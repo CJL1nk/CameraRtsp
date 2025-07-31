@@ -4,7 +4,7 @@
 
 #define LOG_TAG "AudioStream"
 
-void AudioStream::start(int32_t socket) {
+void AudioStream::start(int32_t socket, uint8_t itl) {
     if (running_.exchange(true)) {
         return; // Already running
     }
@@ -12,6 +12,7 @@ void AudioStream::start(int32_t socket) {
         g_audio_source->addListener(this);
     }
     socket_ = socket;
+    interleave_ = itl;
     thread_ = std::thread(&AudioStream::streaming, this);
 }
 

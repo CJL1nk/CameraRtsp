@@ -11,15 +11,15 @@
 
 class VideoStream: public NativeVideoSource::NativeMediaSource::FrameListener {
 public:
-    explicit VideoStream(uint8_t itl) : interleave_(itl) {};
+    VideoStream() = default;
     ~VideoStream() = default;
-    void start(int32_t socket);
+    void start(int32_t socket, uint8_t itl);
     void stop();
     void onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info) override;
 private:
     int32_t ssrc_ = genSSRC();
-    uint8_t interleave_;
 
+    uint8_t interleave_ = 0;
     int32_t socket_ = 0;
     FrameBuffer<RTP_MAX_PACKET_SIZE> socket_buffer_;
 
