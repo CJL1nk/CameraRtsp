@@ -34,9 +34,12 @@ void AudioStream::stop() {
 }
 
 void AudioStream::onFrameAvailable(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &info) {
-    std::lock_guard<std::mutex> lock(frame_mutex_);
-    frame_buffer_ = info;
-    frame_condition_.notify_one();
+    {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        frame_buffer_ = info;
+        frame_condition_.notify_one();
+    }
+    perf_monitor_.onFrameAvailable(info.presentation_time_us);
 }
 
 void AudioStream::streaming() {
@@ -73,6 +76,7 @@ void AudioStream::streaming() {
             last_presentation_time_us_ = frame_buffer_.presentation_time_us;
             last_rtp_ts_ = rtp_ts;
             seq = (seq + 1) % 65536;
+            perf_monitor_.onFrameSend(last_presentation_time_us_);
         }
     }
     LOGD(LOG_TAG, "Processing thread finished");

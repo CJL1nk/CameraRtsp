@@ -36,12 +36,15 @@ void VideoStream::stop() {
 }
 
 void VideoStream::onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info) {
-    std::lock_guard<std::mutex> lock(pending_mutex_);
-    pending_buffer_ = info;
-    if (info.flags & BUFFER_FLAG_KEY_FRAME) {
-        pending_key_frame_buffer_ = info;
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+        pending_buffer_ = info;
+        if (info.flags & BUFFER_FLAG_KEY_FRAME) {
+            pending_key_frame_buffer_ = info;
+        }
+        pending_condition_.notify_one();
     }
-    pending_condition_.notify_one();
+    perf_monitor_.onFrameAvailable(info.presentation_time_us);
 }
 
 void VideoStream::streaming() {
@@ -98,6 +101,7 @@ VideoStream::trySendAndAdvance(uint16_t &seq, const FrameBuffer<MAX_VIDEO_FRAME_
     last_presentation_time_us_ = latest_keyframe_buffer_.presentation_time_us;
     last_rtp_ts_ = rtp_ts;
     seq = (seq + 1) % 65536;
+    perf_monitor_.onFrameSend(last_presentation_time_us_);
     return 0;
 }
 

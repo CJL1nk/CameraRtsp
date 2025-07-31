@@ -4,6 +4,7 @@
 #include "packetizer/aac_latm_packetizer.h"
 #include "source/audio_source.h"
 #include "utils/server_utils.h"
+#include "utils/stream_perf_monitor.h"
 #include <mutex>
 #include <thread>
 #include <sys/socket.h>
@@ -20,7 +21,7 @@ private:
     int32_t ssrc_ = genSSRC();
     uint8_t interleave_;
 
-    int32_t socket_;
+    int32_t socket_ = 0;
     FrameBuffer<RTP_MAX_PACKET_SIZE> socket_buffer_;
 
     std::mutex frame_mutex_;
@@ -34,6 +35,8 @@ private:
 
     std::thread thread_;
     std::atomic<bool> running_ = false;
+
+    StreamPerfMonitor perf_monitor_ = StreamPerfMonitor(false);
 
     void streaming();
     uint32_t calculateRtpTimestamp(int64_t next_frame_timestamp_us) const;
