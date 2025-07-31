@@ -23,6 +23,7 @@ void NativeAudioSource::processQueuedFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZ
 }
 
 bool NativeAudioSource::addListener(NativeMediaSource::FrameListener *listener) {
+    std::lock_guard<std::mutex> lock(listener_mutex_);
     for (auto & i : listeners_) {
         if (i == nullptr) {
             i = listener;
@@ -33,6 +34,7 @@ bool NativeAudioSource::addListener(NativeMediaSource::FrameListener *listener) 
 }
 
 bool NativeAudioSource::removeListener(NativeMediaSource::FrameListener *listener) {
+    std::lock_guard<std::mutex> lock(listener_mutex_);
     for (auto & i : listeners_) {
         if (i == listener) {
             i = nullptr;

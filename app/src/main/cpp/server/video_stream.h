@@ -16,6 +16,8 @@ public:
     void start(int32_t socket, uint8_t itl);
     void stop();
     void onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info) override;
+    bool isRunning() const { return running_.load(); }
+
 private:
     int32_t ssrc_ = genSSRC();
 
@@ -42,6 +44,7 @@ private:
     StreamPerfMonitor perf_monitor_ = StreamPerfMonitor(true);
 
     void streaming();
+    void cleanUp();
     uint32_t calculateRtpTimestamp(int64_t next_frame_timestamp_us) const;
     int32_t trySendAndAdvance(uint16_t &seq, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);
     int32_t sendFrame(uint16_t seq, uint32_t rtp_ts, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);

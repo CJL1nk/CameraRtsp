@@ -23,6 +23,7 @@ public:
     char sps[64] {};
     char pps[64] {};
 private:
+    std::mutex listener_mutex_;
     NativeMediaSource::FrameListener* listeners_[MAX_VIDEO_LISTENER] { nullptr };
     void parseParameterSets(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info);
 };

@@ -18,5 +18,6 @@ public:
     virtual void stop() = 0;
     virtual bool addListener(FrameListener *listener) = 0;
     virtual bool removeListener(FrameListener *listener) = 0;
+
     virtual ~NativeMediaSource() = default;
 };

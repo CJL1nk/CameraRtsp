@@ -21,6 +21,9 @@ public:
         video_stream_.stop();
         audio_stream_.stop();
     };
+    bool isRunning() const {
+        return audio_stream_.isRunning() || video_stream_.isRunning();
+    }
 
 private:
     VideoStream video_stream_ {};

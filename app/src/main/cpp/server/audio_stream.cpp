@@ -8,29 +8,19 @@ void AudioStream::start(int32_t socket, uint8_t itl) {
     if (running_.exchange(true)) {
         return; // Already running
     }
-    if (g_audio_source != nullptr) {
-        g_audio_source->addListener(this);
+    auto source = g_audio_source;
+    if (source != nullptr) {
+        source->addListener(this);
     }
     socket_ = socket;
     interleave_ = itl;
     thread_ = std::thread(&AudioStream::streaming, this);
+    thread_.detach();
 }
 
 void AudioStream::stop() {
-    if (!running_.exchange(false)) {
-        return;
-    }
-
-    if (g_audio_source != nullptr) {
-        g_audio_source->removeListener(this);
-    }
-
+    cleanUp();
     frame_condition_.notify_one();
-
-    if (thread_.joinable()) {
-        thread_.join();
-    }
-
     LOGD("CleanUp", "gracefully clean up audio stream");
 }
 
@@ -82,6 +72,7 @@ void AudioStream::streaming() {
             perf_monitor_.onFrameSend(last_presentation_time_us_);
         }
     }
+    cleanUp();
     LOGD(LOG_TAG, "Processing thread finished");
 }
 
@@ -89,6 +80,17 @@ void AudioStream::streaming() {
 uint32_t AudioStream::calculateRtpTimestamp(int64_t next_frame_timestamp_us) const {
     auto delta_frame_timestamp_us = next_frame_timestamp_us - last_presentation_time_us_;
     return last_rtp_ts_ + delta_frame_timestamp_us * AUDIO_SAMPLE_RATE / 1000000;
+}
+
+void AudioStream::cleanUp() {
+    if (!running_.exchange(false)) {
+        return;
+    }
+
+    auto source = g_audio_source;
+    if (source != nullptr) {
+        source->removeListener(this);
+    }
 }
 
 

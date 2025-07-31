@@ -10,13 +10,11 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
 
 add_library(${CMAKE_PROJECT_NAME} SHARED
-        native-lib.cpp
-        rtp_server.cpp
         packetizer/aac_latm_packetizer.cpp
         packetizer/h265_packetizer.cpp
         server/audio_stream.cpp
         server/video_stream.cpp
-        server/rtp_session.cpp
+        server/rtsp_server.cpp
         source/audio_frame_queue.cpp
         source/audio_source.cpp
         source/video_source.cpp

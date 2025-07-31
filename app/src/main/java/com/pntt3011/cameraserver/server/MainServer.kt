@@ -5,8 +5,6 @@ import android.media.MediaFormat
 import android.os.Handler
 import android.util.Log
 import com.pntt3011.cameraserver.server.packetizer.PacketizerPool
-import com.pntt3011.cameraserver.server.rtp.RTPSession
-import com.pntt3011.cameraserver.server.rtp.RTPTCPSession
 import com.pntt3011.cameraserver.server.rtsp.RTSPServer
 import java.io.OutputStream
 import java.net.InetAddress

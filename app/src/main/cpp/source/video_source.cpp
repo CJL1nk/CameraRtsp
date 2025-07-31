@@ -17,6 +17,7 @@ void NativeVideoSource::onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE>
 }
 
 bool NativeVideoSource::addListener(NativeMediaSource::FrameListener *listener) {
+    std::lock_guard<std::mutex> lock(listener_mutex_);
     for (auto & i : listeners_) {
         if (i == nullptr) {
             i = listener;
@@ -27,6 +28,7 @@ bool NativeVideoSource::addListener(NativeMediaSource::FrameListener *listener) 
 }
 
 bool NativeVideoSource::removeListener(NativeMediaSource::FrameListener *listener) {
+    std::lock_guard<std::mutex> lock(listener_mutex_);
     for (auto & i : listeners_) {
         if (i == listener) {
             i = nullptr;

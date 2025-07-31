@@ -10,29 +10,19 @@ void VideoStream::start(int32_t socket, uint8_t itl) {
     if (running_.exchange(true)) {
         return; // Already running
     }
-    if (g_video_source != nullptr) {
-        g_video_source->addListener(this);
+    auto source = g_video_source;
+    if (source != nullptr) {
+        source->addListener(this);
     }
     socket_ = socket;
     interleave_ = itl;
     thread_ = std::thread(&VideoStream::streaming, this);
+    thread_.detach();
 }
 
 void VideoStream::stop() {
-    if (!running_.exchange(false)) {
-        return;
-    }
-
-    if (g_video_source != nullptr) {
-        g_video_source->removeListener(this);
-    }
-
+    cleanUp();
     pending_condition_.notify_one();
-
-    if (thread_.joinable()) {
-        thread_.join();
-    }
-
     LOGD("CleanUp", "gracefully clean up video stream");
 }
 
@@ -92,6 +82,7 @@ void VideoStream::streaming() {
             }
         }
     }
+    cleanUp();
     LOGD(LOG_TAG, "Processing thread finished");
 }
 
@@ -132,4 +123,15 @@ int32_t VideoStream::sendFrame(uint16_t seq, uint32_t rtp_ts, const FrameBuffer<
         }
     }
     return 0;
+}
+
+void VideoStream::cleanUp() {
+    if (!running_.exchange(false)) {
+        return;
+    }
+
+    auto source = g_video_source;
+    if (source != nullptr) {
+        source->removeListener(this);
+    }
 }

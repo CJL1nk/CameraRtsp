@@ -16,6 +16,7 @@ public:
     void start(int32_t socket, uint8_t itl);
     void stop();
     void onFrameAvailable(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &info) override;
+    bool isRunning() const { return running_.load(); }
 
 private:
     int32_t ssrc_ = genSSRC();
@@ -39,5 +40,6 @@ private:
     StreamPerfMonitor perf_monitor_ = StreamPerfMonitor(false);
 
     void streaming();
+    void cleanUp();
     uint32_t calculateRtpTimestamp(int64_t next_frame_timestamp_us) const;
 };
