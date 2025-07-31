@@ -70,6 +70,7 @@ JNIEXPORT void JNICALL
 Java_com_pntt3011_cameraserver_source_CameraSource_stopNative(JNIEnv *env, jobject thiz) {
     if (g_video_source != nullptr) {
         g_video_source->stop();
+        delete g_video_source;
         g_video_source = nullptr;
     }
 }

@@ -2,7 +2,6 @@
 
 #include "jni.h"
 #include <array>
-#include <chrono>
 #include <mutex>
 #include "utils/circular_deque.h"
 #include "utils/android_log.h"
@@ -15,13 +14,13 @@ public:
     static constexpr char LOG_TAG[] = "StreamPerfMonitor";
 
     void onFrameAvailable(int64_t presentation_time_us) {
-        auto now = nowNano();
+        auto now = currentTimeNanos();
         std::lock_guard<std::mutex> lock(mutex_);
         frame_queue_.push_front(std::pair(presentation_time_us, now));
     }
 
     void onFrameSend(int64_t presentation_time_us) {
-        auto now = nowNano();
+        auto now = currentTimeNanos();
 
         frame_count_++;
 
@@ -32,14 +31,14 @@ public:
             while (!frame_queue_.empty() &&
                    frame_queue_.pop_front(current) &&
                    current.first < presentation_time_us) {
-                int64_t overhead = now - current.second;
+                uint64_t overhead = now - current.second;
                 size_t bin = getBin(overhead);
                 frame_skipped_++;
                 skipped_overhead_bin_[bin]++;
             }
 
             if (!frame_queue_.empty() && current.first == presentation_time_us) {
-                int64_t overhead = now - current.second;
+                uint64_t overhead = now - current.second;
                 size_t bin = getBin(overhead);
                 frame_sent_++;
                 sent_overhead_bin_[bin]++;
@@ -63,15 +62,8 @@ private:
     static constexpr int FRAME_QUEUE_MAX_SIZE = 30;
     static constexpr int LOG_INTERVAL = 1000;
 
-    using Clock = std::chrono::steady_clock;
-
-    static int64_t nowNano() {
-        return std::chrono::duration_cast<std::chrono::nanoseconds>(
-                Clock::now().time_since_epoch()).count();
-    }
-
-    static size_t getBin(int64_t x) {
-        auto bin = static_cast<size_t>(x / 1'000'000);
+    static size_t getBin(uint64_t x) {
+        auto bin = x / 1'000'000;
         return bin < BIN_COUNT ? bin : BIN_COUNT;
     }
 
@@ -85,6 +77,12 @@ private:
             }
         }
         return written;
+    }
+
+    static uint64_t currentTimeNanos() {
+        timespec ts {};
+        clock_gettime(CLOCK_REALTIME, &ts);
+        return (uint64_t)(ts.tv_sec) * 1'000'000'000 + ts.tv_nsec;
     }
 
     bool is_video_;

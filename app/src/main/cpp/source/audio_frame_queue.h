@@ -1,7 +1,7 @@
 #pragma once
 
-#include <thread>
 #include <deque>
+#include <pthread.h>
 
 #include "utils/circular_deque.h"
 #include "utils/frame_buffer.h"
@@ -25,7 +25,7 @@ private:
     std::atomic<bool> running_ = false;
 
     // Thread
-    std::thread processing_thread_;
+    pthread_t processing_thread_ {};
 
     // Buffer pool
     using MemoryPool = HierarchyMemoryPool<MAX_AUDIO_FRAME_QUEUE_SIZE, NORMAL_AUDIO_FRAME_SIZE, MAX_AUDIO_FRAME_SIZE>;
@@ -49,7 +49,7 @@ private:
     CircularDeque<QueueBuffer, MAX_AUDIO_FRAME_QUEUE_SIZE> frame_queue_;
 
     // Timing
-    std::chrono::steady_clock::time_point start_time_;
+    uint64_t start_time_ns_ = 0;
     int64_t first_frame_us_ = 0;
     bool timing_initialized_ = false;
 
@@ -60,5 +60,18 @@ private:
     // Methods
     void runProcessing();
     void processFrame(const QueueBuffer &frame);
-    std::chrono::milliseconds calculateDelay(int64_t presentation_time_us);
+    uint64_t calculateDelayNanos(int64_t presentation_time_us);
+
+private:
+    static void* runProcessingThread(void* arg) {
+        auto* self = reinterpret_cast<NativeAudioFrameQueue*>(arg);
+        self->runProcessing();  // call the member function
+        return nullptr;
+    }
+
+    static uint64_t currentTimeNanos() {
+        timespec ts {};
+        clock_gettime(CLOCK_REALTIME, &ts);
+        return (uint64_t)(ts.tv_sec) * 1'000'000'000 + ts.tv_nsec;
+    }
 };

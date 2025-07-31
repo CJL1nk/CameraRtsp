@@ -7,7 +7,7 @@
 #include "utils/stream_perf_monitor.h"
 #include "utils/server_utils.h"
 #include <mutex>
-#include <thread>
+#include <pthread.h>
 #include <sys/socket.h>
 
 class VideoStream: public NativeVideoSource::NativeMediaSource::FrameListener {
@@ -39,14 +39,21 @@ private:
 
     H265Packetizer packetizer_ = H265Packetizer(interleave_, ssrc_);
 
-    std::thread thread_;
+    pthread_t processing_thread_ {};
     std::atomic<bool> running_ = false;
 
     StreamPerfMonitor perf_monitor_ = StreamPerfMonitor(true);
 
+private:
     void streaming();
     void cleanUp();
     uint32_t calculateRtpTimestamp(int64_t next_frame_timestamp_us) const;
     int32_t trySendAndAdvance(uint16_t &seq, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);
     int32_t sendFrame(uint16_t seq, uint32_t rtp_ts, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);
+
+    static void* runStreamingThread(void *arg) {
+        auto stream = static_cast<VideoStream *>(arg);
+        stream->streaming();
+        return nullptr;
+    }
 };

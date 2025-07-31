@@ -14,8 +14,8 @@ void AudioStream::start(int32_t socket, uint8_t itl) {
     }
     socket_ = socket;
     interleave_ = itl;
-    thread_ = std::thread(&AudioStream::streaming, this);
-    thread_.detach();
+    pthread_create(&processing_thread_, nullptr, runStreamingThread, this);
+    pthread_detach(processing_thread_);
 }
 
 void AudioStream::stop() {

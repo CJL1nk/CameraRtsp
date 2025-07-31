@@ -2,9 +2,10 @@
 
 #include "jni.h"
 #include <array>
-#include <thread>
 #include <mutex>
+#include <pthread.h>
 #include <netinet/in.h>
+#include <unistd.h>
 #include "rtp_session.h"
 
 class RTSPServer {
@@ -45,7 +46,7 @@ public:
 
 private:
     std::atomic<bool> running_ = false;
-    std::thread thread_;
+    pthread_t processing_thread_ {};
 
     uint8_t media_type_ = 0x00;
 
@@ -55,7 +56,13 @@ private:
     const char* public_methods = "OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN";
 
     std::array<Session, MAX_CONNECTIONS> sessions_ {};
-
+private:
+    struct ClientArgs {
+        RTSPServer* server;
+        int32_t session_id;
+        int32_t client;
+        sockaddr_in client_address;
+    };
 private:
     void startListening();
     int32_t setupServer();
@@ -66,4 +73,17 @@ private:
 
     static int32_t findTrackId(const char* request);
     static const char* findCSeq(const char* request);
+
+    static void* startListeningThread(void* arg) {
+        auto* self = reinterpret_cast<RTSPServer*>(arg);
+        self->startListening();  // call the member function
+        return nullptr;
+    }
+
+    static void* handleClientThread(void* arg) {
+        auto args = static_cast<ClientArgs*>(arg);
+        args->server->handleClient(args->session_id, args->client, args->client_address);
+        delete args;  // free allocated memory
+        return nullptr;
+    }
 };

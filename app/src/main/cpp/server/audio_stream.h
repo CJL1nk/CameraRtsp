@@ -7,7 +7,7 @@
 #include "utils/stream_perf_monitor.h"
 #include "utils/constant.h"
 #include <mutex>
-#include <thread>
+#include <pthread.h>
 #include <sys/socket.h>
 
 class AudioStream: public NativeAudioSource::NativeMediaSource::FrameListener {
@@ -35,7 +35,7 @@ private:
 
     AacLatmPacketizer packetizer_ = AacLatmPacketizer(interleave_, ssrc_);
 
-    std::thread thread_;
+    pthread_t processing_thread_ {};
     std::atomic<bool> running_ = false;
 
     StreamPerfMonitor perf_monitor_ = StreamPerfMonitor(false);
@@ -43,4 +43,10 @@ private:
     void streaming();
     void cleanUp();
     uint32_t calculateRtpTimestamp(int64_t next_frame_timestamp_us) const;
+
+    static void* runStreamingThread(void *arg) {
+        auto stream = static_cast<AudioStream *>(arg);
+        stream->streaming();
+        return nullptr;
+    }
 };

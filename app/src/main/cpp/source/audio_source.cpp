@@ -58,6 +58,7 @@ JNIEXPORT void JNICALL
 Java_com_pntt3011_cameraserver_source_AudioSource_stopNative(JNIEnv *env, jobject thiz) {
     if (g_audio_source != nullptr) {
         g_audio_source->stop();
+        delete g_audio_source;
         g_audio_source = nullptr;
     }
 }

@@ -21,7 +21,7 @@ void RTSPServer::start(bool start_video, bool start_audio) {
     if (start_audio) {
         media_type_ |= AUDIO_TYPE;
     }
-    thread_ = std::thread(&RTSPServer::startListening, this);
+    pthread_create(&processing_thread_, nullptr, startListeningThread, this);
 }
 
 void RTSPServer::stop() {
@@ -31,9 +31,7 @@ void RTSPServer::stop() {
     for (auto &session : sessions_) {
         session.tryClose();
     }
-    if (thread_.joinable()) {
-        thread_.join();
-    }
+    pthread_join(processing_thread_, nullptr);
     LOGD("CleanUp", "gracefully clean up rtsp server");
 }
 
@@ -67,11 +65,10 @@ void RTSPServer::startListening() {
         }
 
         sessions_[session_id].socket = client;
-        std::thread thread = std::thread(
-                &RTSPServer::handleClient, this,
-                session_id, client, client_address
-        );
-        thread.detach();
+        auto* client_args = new ClientArgs { this, session_id, client, client_address };
+        pthread_t thread;
+        pthread_create(&thread, nullptr, handleClientThread, client_args);
+        pthread_detach(thread);
     }
 
     close(server_);
@@ -122,7 +119,7 @@ void RTSPServer::handleClient(int32_t session_id, int32_t client, sockaddr_in cl
     session_id_str[MAX_SESSION_ID_LEN - 1] = '\0';
     pthread_setname_np(pthread_self(), session_id_str);
 
-    while (!running_.load()) {
+    while (running_.load()) {
         auto len = recv(client, receive_buffer, sizeof(receive_buffer) - 1, 0);
         if (len <= 0) break;
         receive_buffer[len] = '\0';
@@ -169,6 +166,12 @@ void RTSPServer::handleClient(int32_t session_id, int32_t client, sockaddr_in cl
                      "\r\n",
                      cseq, interleave, interleave + 1, session_id_str);
         } else if (strncmp(requestLine, "PLAY", 4) == 0) {
+            auto &rtpSession = sessions_[session_id].rtp_session;
+            rtpSession.start(
+                    client,
+                    media_type_ & VIDEO_TYPE ? VIDEO_INTERLEAVE : -1,
+                    media_type_ & AUDIO_TYPE ? AUDIO_INTERLEAVE : -1
+            );
             snprintf(response_buffer, sizeof(response_buffer),
                      "RTSP/1.0 200 OK\r\n"
                      "CSeq: %s\r\n"
@@ -301,6 +304,7 @@ JNIEXPORT void JNICALL
 Java_com_pntt3011_cameraserver_server_MainServer_stopNative(JNIEnv *env, jobject thiz) {
     if (g_rtsp_server != nullptr) {
         g_rtsp_server->stop();
+        delete g_rtsp_server;
         g_rtsp_server = nullptr;
     }
 }

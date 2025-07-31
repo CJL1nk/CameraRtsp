@@ -16,8 +16,8 @@ void VideoStream::start(int32_t socket, uint8_t itl) {
     }
     socket_ = socket;
     interleave_ = itl;
-    thread_ = std::thread(&VideoStream::streaming, this);
-    thread_.detach();
+    pthread_create(&processing_thread_, nullptr, runStreamingThread, this);
+    pthread_detach(processing_thread_);
 }
 
 void VideoStream::stop() {
