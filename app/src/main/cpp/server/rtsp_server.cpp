@@ -5,8 +5,6 @@
 #include "rtsp_server.h"
 #include "source/video_source.h"
 #include "source/video_source.h"
-#include "packetizer/aac_latm_packetizer.h"
-#include "packetizer/h265_packetizer.h"
 #include "utils/android_log.h"
 
 #define LOG_TAG "RTSPServer"

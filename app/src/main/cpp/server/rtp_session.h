@@ -3,6 +3,7 @@
 #include "jni.h"
 #include "video_stream.h"
 #include "audio_stream.h"
+#include "utils/server_utils.h"
 
 class RtpSession {
 public:
@@ -12,10 +13,10 @@ public:
 
     void start(int32_t socket, int8_t video_interleave, int8_t audio_interleave) {
         if (video_interleave >= 0) {
-            video_stream_.start(socket, video_interleave);
+            video_stream_.start(socket, video_interleave, genSSRC());
         }
         if (audio_interleave >= 0) {
-            audio_stream_.start(socket, audio_interleave);
+            audio_stream_.start(socket, audio_interleave, genSSRC());
         }
     }
     void stop() {

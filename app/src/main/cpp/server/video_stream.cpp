@@ -3,10 +3,12 @@
 #include "source/video_source.h"
 #include "utils/android_log.h"
 #include "utils/h265_nal_unit.h"
+#include "utils/packetizer.h"
+#include "utils/server_utils.h"
 
 #define LOG_TAG "VideoStream"
 
-void VideoStream::start(int32_t socket, uint8_t itl) {
+void VideoStream::start(int32_t socket, uint8_t itl, int32_t ssrc) {
     if (running_.exchange(true)) {
         return; // Already running
     }
@@ -15,13 +17,18 @@ void VideoStream::start(int32_t socket, uint8_t itl) {
     }
     socket_ = socket;
     interleave_ = itl;
+    ssrc_ = ssrc;
+    last_rtp_ts_ = genRtpTimestamp();
     pthread_create(&processing_thread_, nullptr, runStreamingThread, this);
 }
 
 void VideoStream::stop() {
-    cleanUp();
-    pending_condition_.notify_one();
-    pthread_join(processing_thread_, nullptr);
+    bool was_running = running_.load();
+    markStopped();
+    if (was_running) {
+        pending_condition_.notify_one();
+        pthread_join(processing_thread_, nullptr);
+    }
     LOGD("CleanUp", "gracefully clean up video stream");
 }
 
@@ -81,7 +88,7 @@ void VideoStream::streaming() {
             }
         }
     }
-    cleanUp();
+    markStopped();
     LOGD(LOG_TAG, "Processing thread finished");
 }
 
@@ -111,7 +118,8 @@ int32_t VideoStream::sendFrame(uint16_t seq, uint32_t rtp_ts, const FrameBuffer<
         }
         size_t offset = nal.start;
         while (offset < nal.end) {
-            auto read = packetizer_.packetizeFrame(
+            auto read = packetizeH265Frame(
+                    interleave_, ssrc_,
                     seq, rtp_ts,
                     frame, offset, nal,
                     socket_buffer_.data.data(), socket_buffer_.data.size()
@@ -124,7 +132,7 @@ int32_t VideoStream::sendFrame(uint16_t seq, uint32_t rtp_ts, const FrameBuffer<
     return 0;
 }
 
-void VideoStream::cleanUp() {
+void VideoStream::markStopped() {
     if (!running_.exchange(false)) {
         return;
     }
