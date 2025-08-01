@@ -21,11 +21,12 @@ void MainController::stop() {
 
 void MainController::onFrameAvailable(bool is_video, const uint8_t* data,
                                       size_t size, size_t offset, int64_t time, int32_t flags) {
-    if (is_video) {
+    if (is_video && size <= MAX_VIDEO_FRAME_SIZE) {
         FrameBuffer<MAX_VIDEO_FRAME_SIZE> frame {time, size, flags};
         std::memcpy(frame.data.data(), data + offset, size);
         video_source_.onFrameAvailable(frame);
-    } else {
+    }
+    if (!is_video && size <= MAX_AUDIO_FRAME_SIZE) {
         FrameBuffer<MAX_AUDIO_FRAME_SIZE> frame {time, size, flags};
         std::memcpy(frame.data.data(), data + offset, size);
         audio_source_.onFrameAvailable(frame);
