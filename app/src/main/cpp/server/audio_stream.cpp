@@ -14,12 +14,12 @@ void AudioStream::start(int32_t socket, uint8_t itl) {
     socket_ = socket;
     interleave_ = itl;
     pthread_create(&processing_thread_, nullptr, runStreamingThread, this);
-    pthread_detach(processing_thread_);
 }
 
 void AudioStream::stop() {
     cleanUp();
     frame_condition_.notify_one();
+    pthread_join(processing_thread_, nullptr);
     LOGD("CleanUp", "gracefully clean up audio stream");
 }
 

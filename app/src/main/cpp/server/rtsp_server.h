@@ -38,16 +38,18 @@ private:
         sockaddr_in client_address;
         const int32_t session_id;
         int32_t client = -1;
+        pthread_t thread = 0;
+        std::atomic<bool> thread_start = false;
 
-        void tryClose() {
-            if (client >= 0) {
+        void closeConnection() {
+            if (isConnected()) {
                 rtp_session.stop();
                 close(client);
                 client = -1;
             }
         }
 
-        bool isRunning() const {
+        bool isConnected() const {
             return client >= 0 && rtp_session.isRunning();
         };
     };

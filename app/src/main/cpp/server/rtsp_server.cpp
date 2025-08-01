@@ -32,7 +32,10 @@ void RTSPServer::stop() {
         return;
     }
     for (auto &session : sessions_) {
-        session.tryClose();
+        session.closeConnection();
+        if (session.thread_start.load()) {
+            pthread_join(session.thread, nullptr);
+        }
     }
     pthread_join(processing_thread_, nullptr);
     LOGD("CleanUp", "gracefully clean up rtsp server");
@@ -94,9 +97,12 @@ int32_t RTSPServer::connectClient() {
     session.client = client;
     session.client_address = client_address;
 
-    pthread_t thread;
-    pthread_create(&thread, nullptr, handleClientThread, &session);
-    pthread_detach(thread);
+    if (session.thread_start.exchange(true)) {
+        // Join old, no longer running session
+        pthread_join(session.thread, nullptr);
+    }
+
+    pthread_create(&session.thread, nullptr, handleClientThread, &session);
     return client;
 }
 
@@ -210,13 +216,13 @@ void RTSPServer::handleClient(Session& session) {
         send(session.client, response_buffer, strlen(response_buffer), 0);
     }
 
-    session.tryClose();
+    session.closeConnection();
     LOGD(LOG_TAG, "Client %s disconnected, exiting listening loop.", clientIp);
 }
 
 int32_t RTSPServer::getAvailableSession() const {
     for (size_t i = 0; i < MAX_CONNECTIONS; i++) {
-        if (!sessions_[i].isRunning()) {
+        if (!sessions_[i].isConnected()) {
             return static_cast<int32_t>(i);
         }
     }
