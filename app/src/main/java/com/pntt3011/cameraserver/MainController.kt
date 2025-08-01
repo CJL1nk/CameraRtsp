@@ -57,7 +57,7 @@ class MainController(context: Context) {
         cameraSource.start()
         audioSource.start()
         workerHandler.post {
-            startNative(false, true)
+            startNative(true, true)
         }
         temperatureMonitor.start()
     }
@@ -67,6 +67,8 @@ class MainController(context: Context) {
         audioSource.stop()
         workerHandler.post {
             stopNative()
+            stoppedNative = true
+            checkStop()
         }
         temperatureMonitor.stop()
     }

@@ -123,7 +123,7 @@ class AudioSource(private val callback: SourceCallback) {
         if (!isRecording) return
         isRecording = false
         callback.handler.post {
-            encodeExecutor?.awaitTermination(1, TimeUnit.SECONDS)
+            encodeExecutor?.awaitTermination(5, TimeUnit.SECONDS)
             callback.onClosed()
         }
     }

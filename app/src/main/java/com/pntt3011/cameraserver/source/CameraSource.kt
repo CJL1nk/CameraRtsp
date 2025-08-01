@@ -289,7 +289,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
 
         override fun onClosed(session: CameraCaptureSession) {
             isStopped = true
-            encodeExecutor.awaitTermination(1, TimeUnit.SECONDS)
+            encodeExecutor.awaitTermination(5, TimeUnit.SECONDS)
             cameraCallback.onClosed()
         }
 
