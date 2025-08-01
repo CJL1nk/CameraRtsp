@@ -15,11 +15,14 @@ void RTSPServer::start(bool start_video, bool start_audio) {
     if (running_.exchange(true)) {
         return;
     }
+    int32_t idx = 0;
     if (start_video) {
         media_type_ |= VIDEO_TYPE;
+        video_track_idx_ = idx++;
     }
     if (start_audio) {
         media_type_ |= AUDIO_TYPE;
+        audio_track_idx_ = idx++;
     }
     pthread_create(&processing_thread_, nullptr, startListeningThread, this);
 }
@@ -45,14 +48,13 @@ void RTSPServer::startListeningInterval() {
     }
 
     fd_set read_fds;
-    FD_ZERO(&read_fds);
-    FD_SET(server_, &read_fds);
-
     timeval timeout {};
     timeout.tv_sec = 1;  // 1s timeout
     timeout.tv_usec = 0;
 
     while (running_.load()) {
+        FD_ZERO(&read_fds);
+        FD_SET(server_, &read_fds);
         auto activity = select(server_ + 1, &read_fds, nullptr, nullptr, &timeout);
         if (activity > 0 && FD_ISSET(server_, &read_fds)) {
             auto client = connectClient();
@@ -88,11 +90,12 @@ int32_t RTSPServer::connectClient() {
         return -1;
     }
 
-    sessions_[session_id].session_id = session_id;
-    sessions_[session_id].client = client;
-    sessions_[session_id].client_address = client_address;
+    auto &session = sessions_[session_id];
+    session.client = client;
+    session.client_address = client_address;
+
     pthread_t thread;
-    pthread_create(&thread, nullptr, handleClientThread, &sessions_[session_id]);
+    pthread_create(&thread, nullptr, handleClientThread, &session);
     pthread_detach(thread);
     return client;
 }
@@ -132,7 +135,6 @@ void RTSPServer::handleClient(Session& session) {
     char clientIp[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &session.client_address.sin_addr, clientIp, sizeof(clientIp));
 
-    char* lines[MAX_LINES];
     char response_buffer[MAX_BUFFER_LEN];
     char receive_buffer[MAX_BUFFER_LEN];
     char session_id_str[MAX_SESSION_ID_LEN];
@@ -146,48 +148,38 @@ void RTSPServer::handleClient(Session& session) {
         if (len <= 0) break;
         receive_buffer[len] = '\0';
 
-        // Split into lines
-        size_t lineCount = 0;
-        char* token = strtok(receive_buffer, "\r\n");
-        while (token && lineCount < MAX_LINES) {
-            lines[lineCount++] = token;
-            token = strtok(nullptr, "\r\n"); // Continue from last buffer
-        }
-        if (lineCount == 0) continue;
+        auto cseq = findCSeq(receive_buffer);
+        if (cseq < 0) continue;
 
-        const char* requestLine = lines[0];
-        const char* cseq = findCSeq(requestLine);
-        if (!cseq) continue;
+        auto track_id = findTrackId(receive_buffer);
 
-        auto track_id = findTrackId(requestLine);
-
-        if (strncmp(requestLine, "OPTIONS", 7) == 0) {
+        if (strncmp(receive_buffer, "OPTIONS", 7) == 0) {
             snprintf(response_buffer, sizeof(response_buffer),
                      "RTSP/1.0 200 OK\r\n"
-                     "CSeq: %s\r\n"
+                     "CSeq: %d\r\n"
                      "Public: %s\r\n"
                      "\r\n",
                      cseq, public_methods);
-        } else if (strncmp(requestLine, "DESCRIBE", 8) == 0) {
+        } else if (strncmp(receive_buffer, "DESCRIBE", 8) == 0) {
             auto sdp_len = prepareSdp(clientIp, sdp_buffer, sizeof(sdp_buffer));
             snprintf(response_buffer, sizeof(response_buffer),
                      "RTSP/1.0 200 OK\r\n"
-                     "CSeq: %s\r\n"
+                     "CSeq: %d\r\n"
                      "Content-Type: application/sdp\r\n"
                      "Content-Length: %zu\r\n"
                      "\r\n"
                      "%s",
                      cseq, sdp_len, sdp_buffer);
-        } else if (strncmp(requestLine, "SETUP", 5) == 0 && track_id >= 0) {
-            auto interleave = track_id == VIDEO_TRACK_ID ? VIDEO_INTERLEAVE : AUDIO_INTERLEAVE;
+        } else if (strncmp(receive_buffer, "SETUP", 5) == 0 && track_id >= 0) {
+            auto interleave = track_id == video_track_idx_ ? VIDEO_INTERLEAVE : AUDIO_INTERLEAVE;
             snprintf(response_buffer, sizeof(response_buffer),
                      "RTSP/1.0 200 OK\r\n"
-                     "CSeq: %s\r\n"
+                     "CSeq: %d\r\n"
                      "Transport: RTP/AVP/TCP;interleaved=%d-%d;unicast\r\n"
                      "Session: %s\r\n"
                      "\r\n",
                      cseq, interleave, interleave + 1, session_id_str);
-        } else if (strncmp(requestLine, "PLAY", 4) == 0) {
+        } else if (strncmp(receive_buffer, "PLAY", 4) == 0) {
             session.rtp_session.start(
                     session.client,
                     media_type_ & VIDEO_TYPE ? VIDEO_INTERLEAVE : -1,
@@ -195,14 +187,14 @@ void RTSPServer::handleClient(Session& session) {
             );
             snprintf(response_buffer, sizeof(response_buffer),
                      "RTSP/1.0 200 OK\r\n"
-                     "CSeq: %s\r\n"
+                     "CSeq: %d\r\n"
                      "Session: %s\r\n"
                      "\r\n",
                      cseq, session_id_str);
-        } else if (strncmp(requestLine, "TEARDOWN", 8) == 0) {
+        } else if (strncmp(receive_buffer, "TEARDOWN", 8) == 0) {
             snprintf(response_buffer, sizeof(response_buffer),
                      "RTSP/1.0 200 OK\r\n"
-                     "CSeq: %s\r\n"
+                     "CSeq: %d\r\n"
                      "Session: %s\r\n"
                      "\r\n",
                      cseq, session_id_str);
@@ -210,7 +202,7 @@ void RTSPServer::handleClient(Session& session) {
         } else {
             snprintf(response_buffer, sizeof(response_buffer),
                      "RTSP/1.0 404 Invalid command\r\n"
-                     "CSeq: %s\r\n"
+                     "CSeq: %d\r\n"
                      "Public: %s\r\n"
                      "\r\n",
                      cseq, public_methods);
@@ -253,15 +245,18 @@ int32_t RTSPServer::findTrackId(const char *request) {
     return trackId;
 }
 
-const char* RTSPServer::findCSeq(const char *request) {
+int32_t RTSPServer::findCSeq(const char *request) {
     const char* keyword = "CSeq:";
     const char* pos = strstr(request, keyword);
-    if (!pos) return nullptr;
+    if (!pos) return -1;
 
     pos += strlen(keyword);
     while (*pos == ' ' || *pos == '\t') pos++;
-
-    return pos;
+    int32_t value;
+    if (sscanf(pos, "%d", &value) == 1) {
+        return value;
+    }
+    return -1;
 }
 
 size_t RTSPServer::prepareSdp(const char* client_ip, char* sdp_buffer, size_t buffer_size) const {
@@ -277,8 +272,7 @@ size_t RTSPServer::prepareSdp(const char* client_ip, char* sdp_buffer, size_t bu
                        client_ip
     );
 
-    auto video_source = g_video_source;
-    if ((media_type_ & VIDEO_TYPE) && video_source != nullptr) {
+    if ((media_type_ & VIDEO_TYPE) && video_source_ != nullptr && video_source_->areParamsInitialized()) {
         offset += snprintf(sdp_buffer + offset, buffer_size - offset,
                            "\r\n"
                            "m=video 0 RTP/AVP %d\r\n"
@@ -287,8 +281,8 @@ size_t RTSPServer::prepareSdp(const char* client_ip, char* sdp_buffer, size_t bu
                            "a=control:trackID=%d\r\n",
                            H265_PAYLOAD_TYPE,
                            H265_PAYLOAD_TYPE, VIDEO_SAMPLE_RATE,
-                           H265_PAYLOAD_TYPE, video_source->vps, video_source->sps, video_source->pps,
-                           VIDEO_TRACK_ID);
+                           H265_PAYLOAD_TYPE, video_source_->vps, video_source_->sps, video_source_->pps,
+                           video_track_idx_);
     }
 
     if ((media_type_ & AUDIO_TYPE)) {
@@ -296,36 +290,14 @@ size_t RTSPServer::prepareSdp(const char* client_ip, char* sdp_buffer, size_t bu
                            "\r\n"
                            "m=audio 0 RTP/AVP %d\r\n"
                            "a=rtpmap:%d MPEG4-GENERIC/%d/%d\r\n"
-                           "a=fmtp:%d streamtype=5; profile-level-id=15; mode=AAC-hbr; config=0x1208; SizeLength=13; IndexLength=3; IndexDeltaLength=3;\r\n"
+                           "a=fmtp:%d streamtype=5; profile-level-id=15; mode=AAC-hbr; config=1208; SizeLength=13; IndexLength=3; IndexDeltaLength=3;\r\n"
                            "a=control:trackID=%d\r\n",
                            AAC_PAYLOAD_TYPE,
                            AAC_PAYLOAD_TYPE, AUDIO_SAMPLE_RATE, AUDIO_CHANNEL_COUNT,
                            AAC_PAYLOAD_TYPE,
-                           AUDIO_TRACK_ID
+                           audio_track_idx_
         );
     }
-    sdp_buffer[offset++] = '\0';
+    sdp_buffer[offset] = '\0';
     return offset;
-}
-
-static RTSPServer *g_rtsp_server = nullptr;
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_pntt3011_cameraserver_server_MainServer_startNative(JNIEnv *env, jobject thiz,
-                                                             jboolean start_video,
-                                                             jboolean start_audio) {
-    if (g_rtsp_server == nullptr) {
-        g_rtsp_server = new RTSPServer();
-    }
-    g_rtsp_server->start(start_video, start_audio);
-}
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_pntt3011_cameraserver_server_MainServer_stopNative(JNIEnv *env, jobject thiz) {
-    if (g_rtsp_server != nullptr) {
-        g_rtsp_server->stop();
-        delete g_rtsp_server;
-        g_rtsp_server = nullptr;
-    }
 }

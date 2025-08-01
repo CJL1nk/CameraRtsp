@@ -55,7 +55,6 @@ class AudioSource(private val callback: SourceCallback) {
         )
 
         audioRecord.startRecording()
-        startNative()
 
         val format = MediaFormat.createAudioFormat("audio/mp4a-latm", sampleRate, channelCount)
         format.setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
@@ -97,7 +96,7 @@ class AudioSource(private val callback: SourceCallback) {
                         val outputBuffer = codec.getOutputBuffer(outputIndex) ?: break
                         outputBuffer.position(bufferInfo.offset)
                         outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                        onFrameAvailableNative(outputBuffer, bufferInfo.offset, bufferInfo.size, bufferInfo.presentationTimeUs, bufferInfo.flags)
+                        onAudioFrameAvailableNative(outputBuffer, bufferInfo.offset, bufferInfo.size, bufferInfo.presentationTimeUs, bufferInfo.flags)
                         codec.releaseOutputBuffer(outputIndex, false)
 
                         if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -116,8 +115,6 @@ class AudioSource(private val callback: SourceCallback) {
         audioRecord.stop()
         audioRecord.release()
 
-        stopNative()
-
         Log.d("CleanUp", "gracefully clean up audio source")
     }
 
@@ -131,7 +128,5 @@ class AudioSource(private val callback: SourceCallback) {
         }
     }
 
-    private external fun startNative()
-    private external fun stopNative()
-    private external fun onFrameAvailableNative(buffer: ByteBuffer, offset: Int, size: Int, time: Long, flags: Int)
+    private external fun onAudioFrameAvailableNative(buffer: ByteBuffer, offset: Int, size: Int, time: Long, flags: Int)
 }

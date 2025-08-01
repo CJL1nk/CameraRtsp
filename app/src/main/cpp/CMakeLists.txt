@@ -10,6 +10,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
 
 add_library(${CMAKE_PROJECT_NAME} SHARED
+        controller/main_controller.cpp
         packetizer/aac_latm_packetizer.cpp
         packetizer/h265_packetizer.cpp
         server/audio_stream.cpp

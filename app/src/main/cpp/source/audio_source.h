@@ -29,5 +29,3 @@ private:
         static_cast<NativeAudioSource*>(context)->processQueuedFrame(frame);
     }
 };
-
-static NativeAudioSource *g_audio_source = nullptr;

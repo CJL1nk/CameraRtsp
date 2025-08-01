@@ -8,9 +8,8 @@ void AudioStream::start(int32_t socket, uint8_t itl) {
     if (running_.exchange(true)) {
         return; // Already running
     }
-    auto source = g_audio_source;
-    if (source != nullptr) {
-        source->addListener(this);
+    if (audio_source_ != nullptr) {
+        audio_source_->addListener(this);
     }
     socket_ = socket;
     interleave_ = itl;
@@ -87,9 +86,8 @@ void AudioStream::cleanUp() {
         return;
     }
 
-    auto source = g_audio_source;
-    if (source != nullptr) {
-        source->removeListener(this);
+    if (audio_source_ != nullptr) {
+        audio_source_->removeListener(this);
     }
 }
 

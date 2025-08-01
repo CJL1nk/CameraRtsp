@@ -109,7 +109,6 @@ class CameraSource(context: Context, callback: SourceCallback) {
         val outputSurface = encoder.createInputSurface()
         this.encoder = encoder
         encoder.start()
-        startNative()
         isEncoderRunning = true
         eglSetup(outputSurface)
         makeCurrent()
@@ -399,7 +398,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
                 if (bufferInfo.size > 0) {
                     encodedData.position(bufferInfo.offset)
                     encodedData.limit(bufferInfo.offset + bufferInfo.size)
-                    onFrameAvailableNative(encodedData, bufferInfo.offset, bufferInfo.size, bufferInfo.presentationTimeUs, bufferInfo.flags)
+                    onVideoFrameAvailableNative(encodedData, bufferInfo.offset, bufferInfo.size, bufferInfo.presentationTimeUs, bufferInfo.flags)
                     // Important: mark the buffer as processed
                     encoder.releaseOutputBuffer(outputIndex, false)
                 }
@@ -431,8 +430,6 @@ class CameraSource(context: Context, callback: SourceCallback) {
         encoder?.stop()
         encoder?.release()
         encoder = null
-
-        stopNative()
 
         releaseGlProgram()
 
@@ -515,10 +512,6 @@ class CameraSource(context: Context, callback: SourceCallback) {
         fragmentShader = 0
     }
 
-    private external fun startNative()
-    private external fun stopNative()
-    private external fun onFrameAvailableNative(buffer: ByteBuffer, offset: Int, size: Int, time: Long, flags: Int)
-
     companion object {
         const val DEFAULT_VERTEX_SHADER = "" +
                 "#version 300 es\n" +
@@ -545,4 +538,6 @@ class CameraSource(context: Context, callback: SourceCallback) {
                 "    fragColor = texture(uTexture, vTexCoord);\n" +
                 "}\n"
     }
+
+    private external fun onVideoFrameAvailableNative(buffer: ByteBuffer, offset: Int, size: Int, time: Long, flags: Int)
 }

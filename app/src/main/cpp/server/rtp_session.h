@@ -6,7 +6,8 @@
 
 class RtpSession {
 public:
-    RtpSession() = default;
+    explicit RtpSession(NativeVideoSource* video_source, NativeAudioSource* audio_source)
+            : video_stream_(VideoStream {video_source}), audio_stream_(AudioStream {audio_source}) {};
     ~RtpSession() = default;
 
     void start(int32_t socket, int8_t video_interleave, int8_t audio_interleave) {
@@ -26,6 +27,6 @@ public:
     }
 
 private:
-    VideoStream video_stream_ {};
-    AudioStream audio_stream_ {};
+    VideoStream video_stream_;
+    AudioStream audio_stream_;
 };

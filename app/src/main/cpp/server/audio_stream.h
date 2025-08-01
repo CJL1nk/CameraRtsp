@@ -12,7 +12,7 @@
 
 class AudioStream: public NativeAudioSource::NativeMediaSource::FrameListener {
 public:
-    AudioStream() = default;
+    explicit AudioStream(NativeAudioSource* source) : audio_source_(source) {};
     ~AudioStream() = default;
     void start(int32_t socket, uint8_t itl);
     void stop();
@@ -38,6 +38,7 @@ private:
     pthread_t processing_thread_ {};
     std::atomic<bool> running_ = false;
 
+    NativeAudioSource *audio_source_;
     StreamPerfMonitor perf_monitor_ = StreamPerfMonitor(false);
 
     void streaming();

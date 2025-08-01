@@ -10,9 +10,8 @@ void VideoStream::start(int32_t socket, uint8_t itl) {
     if (running_.exchange(true)) {
         return; // Already running
     }
-    auto source = g_video_source;
-    if (source != nullptr) {
-        source->addListener(this);
+    if (video_source_ != nullptr) {
+        video_source_->addListener(this);
     }
     socket_ = socket;
     interleave_ = itl;
@@ -130,8 +129,7 @@ void VideoStream::cleanUp() {
         return;
     }
 
-    auto source = g_video_source;
-    if (source != nullptr) {
-        source->removeListener(this);
+    if (video_source_ != nullptr) {
+        video_source_->removeListener(this);
     }
 }

@@ -6,7 +6,9 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include "rtp_session.h"
+#include "server/rtp_session.h"
+#include "source/video_source.h"
+#include "source/audio_source.h"
 
 class RTSPServer {
 public:
@@ -21,10 +23,9 @@ public:
     static constexpr size_t MAX_BUFFER_LEN = 1024;
     static constexpr size_t MAX_SDP_LEN = 2048;
     static constexpr size_t MAX_SESSION_ID_LEN = 10;
-    static constexpr uint8_t VIDEO_TRACK_ID = 0;
-    static constexpr uint8_t AUDIO_TRACK_ID = 1;
 
-    RTSPServer() = default;
+    explicit RTSPServer(NativeVideoSource* video_source, NativeAudioSource* audio_source)
+        : video_source_(video_source), audio_source_(audio_source) {};
     ~RTSPServer() = default;
 
     void start(bool start_video, bool start_audio);
@@ -35,7 +36,7 @@ private:
         RTSPServer* server;
         RtpSession rtp_session;
         sockaddr_in client_address;
-        int32_t session_id;
+        const int32_t session_id;
         int32_t client = -1;
 
         void tryClose() {
@@ -56,13 +57,30 @@ private:
     pthread_t processing_thread_ {};
 
     uint8_t media_type_ = 0x00;
+    int32_t video_track_idx_ = -1;
+    int32_t audio_track_idx_ = -1;
 
     int32_t server_ = -1;
     sockaddr_in server_address_ {};
     socklen_t server_addrlen_ = sizeof(server_address_);
     const char* public_methods = "OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN";
 
-    std::array<Session, MAX_CONNECTIONS> sessions_ {};
+    NativeVideoSource *video_source_;
+    NativeAudioSource *audio_source_;
+    std::array<Session, MAX_CONNECTIONS> sessions_ {
+            Session {
+                this,
+                RtpSession {video_source_, audio_source_},
+                {},
+                0
+            },
+            Session {
+                this,
+                RtpSession {video_source_, audio_source_},
+                {},
+                1
+            }
+    };
 
 private:
     int32_t setupServer();
@@ -74,7 +92,7 @@ private:
     size_t prepareSdp(const char* client_ip, char* sdp_buffer, size_t buffer_size) const;
 
     static int32_t findTrackId(const char* request);
-    static const char* findCSeq(const char* request);
+    static int32_t findCSeq(const char* request);
 
     static void* startListeningThread(void* arg) {
         auto* self = reinterpret_cast<RTSPServer*>(arg);

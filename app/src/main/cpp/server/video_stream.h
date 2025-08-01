@@ -12,7 +12,7 @@
 
 class VideoStream: public NativeVideoSource::NativeMediaSource::FrameListener {
 public:
-    VideoStream() = default;
+    explicit VideoStream(NativeVideoSource *video_source) : video_source_(video_source) {};
     ~VideoStream() = default;
     void start(int32_t socket, uint8_t itl);
     void stop();
@@ -42,6 +42,7 @@ private:
     pthread_t processing_thread_ {};
     std::atomic<bool> running_ = false;
 
+    NativeVideoSource *video_source_;
     StreamPerfMonitor perf_monitor_ = StreamPerfMonitor(true);
 
 private:

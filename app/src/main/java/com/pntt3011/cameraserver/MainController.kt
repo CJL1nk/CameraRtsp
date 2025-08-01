@@ -7,7 +7,6 @@ import android.os.Looper
 import android.os.Message
 import android.util.Log
 import com.pntt3011.cameraserver.monitor.TemperatureMonitor
-import com.pntt3011.cameraserver.server.MainServer
 import com.pntt3011.cameraserver.source.AudioSource
 import com.pntt3011.cameraserver.source.CameraSource
 import com.pntt3011.cameraserver.source.SourceCallback
@@ -28,12 +27,6 @@ class MainController(context: Context) {
                     Log.e("WorkerHandler", "Exception in handleMessage: ${e.message}", e)
                 }
             }
-        }
-    }
-    private val server by lazy {
-        MainServer(workerHandler) {
-            stoppedServer = true
-            checkStop()
         }
     }
     private val cameraSource by lazy {
@@ -63,23 +56,27 @@ class MainController(context: Context) {
         loadNativeLib()
         cameraSource.start()
         audioSource.start()
-        server.start(true, true)
+        workerHandler.post {
+            startNative(false, true)
+        }
         temperatureMonitor.start()
     }
 
     fun stop() {
         cameraSource.stop()
         audioSource.stop()
-        server.stop()
+        workerHandler.post {
+            stopNative()
+        }
         temperatureMonitor.stop()
     }
 
     private var stoppedVideo = false
     private var stoppedAudio = false
-    private var stoppedServer = false
+    private var stoppedNative = false
 
     private fun checkStop() {
-        if (stoppedVideo && stoppedAudio && stoppedServer) {
+        if (stoppedVideo && stoppedAudio && stoppedNative) {
             cleanUp()
         }
     }
@@ -101,4 +98,7 @@ class MainController(context: Context) {
     private val temperatureMonitor by lazy {
         TemperatureMonitor(context, workerHandler)
     }
+
+    private external fun startNative(video: Boolean, audio: Boolean)
+    private external fun stopNative()
 }
