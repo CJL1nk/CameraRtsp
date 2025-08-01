@@ -289,6 +289,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
         }
 
         override fun onClosed(session: CameraCaptureSession) {
+            isStopped = true
             encodeExecutor.awaitTermination(1, TimeUnit.SECONDS)
             cameraCallback.onClosed()
         }
@@ -409,7 +410,6 @@ class CameraSource(context: Context, callback: SourceCallback) {
 
     fun stop() {
         if (isStopped) return
-        isStopped = true
         cameraHandler.post {
             stopCamera()
         }
@@ -419,6 +419,7 @@ class CameraSource(context: Context, callback: SourceCallback) {
     private var isStopped = false
 
     private fun stopCamera() {
+        if (isStopped) return
         captureSession?.apply {
             stopRepeating()
             close() // Call onClosed

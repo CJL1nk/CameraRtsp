@@ -35,7 +35,7 @@ void RTSPServer::stop() {
     LOGD("CleanUp", "gracefully clean up rtsp server");
 }
 
-void RTSPServer::startListening() {
+void RTSPServer::startListeningInterval() {
     server_ = setupServer();
     pthread_setname_np(pthread_self(), "RTSPServer");
 
@@ -44,35 +44,57 @@ void RTSPServer::startListening() {
         return;
     }
 
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(server_, &read_fds);
+
+    timeval timeout {};
+    timeout.tv_sec = 1;  // 1s timeout
+    timeout.tv_usec = 0;
+
     while (running_.load()) {
-        sockaddr_in client_address {};
-        socklen_t client_addrlen = sizeof(client_address);
-        auto client = accept(server_, (sockaddr *)&client_address, &client_addrlen);
-        if (client < 0) {
-            LOGE(LOG_TAG, "Failed to accept connection, error code %d", client);
-            break;
+        auto activity = select(server_ + 1, &read_fds, nullptr, nullptr, &timeout);
+        if (activity > 0 && FD_ISSET(server_, &read_fds)) {
+            auto client = connectClient();
+            if (client < 0) {
+                break;
+            }
         }
-
-        if (isClientConnected(client)) {
-            continue;
-        }
-
-        auto session_id = getAvailableSession();
-        if (session_id == -1) {
-            LOGE(LOG_TAG, "Limit session reached");
-            close(client);
-            return;
-        }
-
-        sessions_[session_id].socket = client;
-        auto* client_args = new ClientArgs { this, session_id, client, client_address };
-        pthread_t thread;
-        pthread_create(&thread, nullptr, handleClientThread, client_args);
-        pthread_detach(thread);
     }
 
     close(server_);
     LOGD(LOG_TAG, "Processing thread finished");
+}
+
+
+int32_t RTSPServer::connectClient() {
+    sockaddr_in client_address {};
+    socklen_t client_addrlen = sizeof(client_address);
+
+    auto client = accept(server_, (sockaddr *)&client_address, &client_addrlen);
+    if (client < 0) {
+        LOGE(LOG_TAG, "Failed to accept connection, error code %d", client);
+        return client;
+    }
+
+    if (isClientConnected(client)) {
+        return client;
+    }
+
+    auto session_id = getAvailableSession();
+    if (session_id == -1) {
+        LOGE(LOG_TAG, "Limit session reached");
+        close(client);
+        return -1;
+    }
+
+    sessions_[session_id].session_id = session_id;
+    sessions_[session_id].client = client;
+    sessions_[session_id].client_address = client_address;
+    pthread_t thread;
+    pthread_create(&thread, nullptr, handleClientThread, &sessions_[session_id]);
+    pthread_detach(thread);
+    return client;
 }
 
 int32_t RTSPServer::setupServer() {
@@ -106,21 +128,21 @@ int32_t RTSPServer::setupServer() {
     return server_fd;
 }
 
-void RTSPServer::handleClient(int32_t session_id, int32_t client, sockaddr_in client_address) {
+void RTSPServer::handleClient(Session& session) {
     char clientIp[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &client_address.sin_addr, clientIp, sizeof(clientIp));
+    inet_ntop(AF_INET, &session.client_address.sin_addr, clientIp, sizeof(clientIp));
 
     char* lines[MAX_LINES];
     char response_buffer[MAX_BUFFER_LEN];
     char receive_buffer[MAX_BUFFER_LEN];
     char session_id_str[MAX_SESSION_ID_LEN];
     char sdp_buffer[MAX_SDP_LEN];
-    snprintf(session_id_str, MAX_SESSION_ID_LEN, "session_%d", session_id);
+    snprintf(session_id_str, MAX_SESSION_ID_LEN, "session_%d", session.session_id);
     session_id_str[MAX_SESSION_ID_LEN - 1] = '\0';
     pthread_setname_np(pthread_self(), session_id_str);
 
     while (running_.load()) {
-        auto len = recv(client, receive_buffer, sizeof(receive_buffer) - 1, 0);
+        auto len = recv(session.client, receive_buffer, sizeof(receive_buffer) - 1, 0);
         if (len <= 0) break;
         receive_buffer[len] = '\0';
 
@@ -166,9 +188,8 @@ void RTSPServer::handleClient(int32_t session_id, int32_t client, sockaddr_in cl
                      "\r\n",
                      cseq, interleave, interleave + 1, session_id_str);
         } else if (strncmp(requestLine, "PLAY", 4) == 0) {
-            auto &rtpSession = sessions_[session_id].rtp_session;
-            rtpSession.start(
-                    client,
+            session.rtp_session.start(
+                    session.client,
                     media_type_ & VIDEO_TYPE ? VIDEO_INTERLEAVE : -1,
                     media_type_ & AUDIO_TYPE ? AUDIO_INTERLEAVE : -1
             );
@@ -194,10 +215,10 @@ void RTSPServer::handleClient(int32_t session_id, int32_t client, sockaddr_in cl
                      "\r\n",
                      cseq, public_methods);
         }
-        send(client, response_buffer, strlen(response_buffer), 0);
+        send(session.client, response_buffer, strlen(response_buffer), 0);
     }
 
-    sessions_[session_id].tryClose();
+    session.tryClose();
     LOGD(LOG_TAG, "Client %s disconnected, exiting listening loop.", clientIp);
 }
 
@@ -212,7 +233,7 @@ int32_t RTSPServer::getAvailableSession() const {
 
 bool RTSPServer::isClientConnected(int32_t client) const {
     for (const auto &session : sessions_) {
-        if (session.socket == client) {
+        if (session.client == client) {
             return true;
         }
     }

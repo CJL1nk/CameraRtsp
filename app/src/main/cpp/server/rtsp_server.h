@@ -24,25 +24,32 @@ public:
     static constexpr uint8_t VIDEO_TRACK_ID = 0;
     static constexpr uint8_t AUDIO_TRACK_ID = 1;
 
-    struct Session {
-        RtpSession rtp_session;
-        int32_t socket = -1;
-        void tryClose() {
-            if (socket >= 0) {
-                rtp_session.stop();
-                close(socket);
-                socket = -1;
-            }
-        }
-        bool isRunning() const {
-            return socket >= 0 && rtp_session.isRunning();
-        };
-    };
-
     RTSPServer() = default;
     ~RTSPServer() = default;
+
     void start(bool start_video, bool start_audio);
     void stop();
+
+private:
+    struct Session {
+        RTSPServer* server;
+        RtpSession rtp_session;
+        sockaddr_in client_address;
+        int32_t session_id;
+        int32_t client = -1;
+
+        void tryClose() {
+            if (client >= 0) {
+                rtp_session.stop();
+                close(client);
+                client = -1;
+            }
+        }
+
+        bool isRunning() const {
+            return client >= 0 && rtp_session.isRunning();
+        };
+    };
 
 private:
     std::atomic<bool> running_ = false;
@@ -51,22 +58,17 @@ private:
     uint8_t media_type_ = 0x00;
 
     int32_t server_ = -1;
-    sockaddr_in server_address_;
+    sockaddr_in server_address_ {};
     socklen_t server_addrlen_ = sizeof(server_address_);
     const char* public_methods = "OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN";
 
     std::array<Session, MAX_CONNECTIONS> sessions_ {};
+
 private:
-    struct ClientArgs {
-        RTSPServer* server;
-        int32_t session_id;
-        int32_t client;
-        sockaddr_in client_address;
-    };
-private:
-    void startListening();
     int32_t setupServer();
-    void handleClient(int32_t session_id, int32_t client, sockaddr_in client_address);
+    void startListeningInterval();
+    int32_t connectClient();
+    void handleClient(Session& session);
     int32_t getAvailableSession() const;
     bool isClientConnected(int32_t client) const;
     size_t prepareSdp(const char* client_ip, char* sdp_buffer, size_t buffer_size) const;
@@ -76,14 +78,13 @@ private:
 
     static void* startListeningThread(void* arg) {
         auto* self = reinterpret_cast<RTSPServer*>(arg);
-        self->startListening();  // call the member function
+        self->startListeningInterval();  // call the member function
         return nullptr;
     }
 
     static void* handleClientThread(void* arg) {
-        auto args = static_cast<ClientArgs*>(arg);
-        args->server->handleClient(args->session_id, args->client, args->client_address);
-        delete args;  // free allocated memory
+        auto args = static_cast<Session*>(arg);
+        args->server->handleClient(*args);
         return nullptr;
     }
 };

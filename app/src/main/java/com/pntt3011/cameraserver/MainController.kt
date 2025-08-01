@@ -61,16 +61,16 @@ class MainController(context: Context) {
 
     fun start() {
         loadNativeLib()
-        server.start(true, true)
-        audioSource.start()
         cameraSource.start()
+        audioSource.start()
+        server.start(true, true)
         temperatureMonitor.start()
     }
 
     fun stop() {
-        server.stop()
-        audioSource.stop()
         cameraSource.stop()
+        audioSource.stop()
+        server.stop()
         temperatureMonitor.stop()
     }
 
