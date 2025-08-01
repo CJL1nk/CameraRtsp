@@ -3,10 +3,9 @@
 #include "jni.h"
 #include <random>
 
-static inline uint8_t genSSRC() {
+static inline int32_t genSSRC() {
     std::random_device rd;
-    std::uniform_int_distribution<int> dist(0, 255);
-    return static_cast<uint8_t>(dist(rd));
+    return rd();
 }
 
 static inline uint32_t genRtpTimestamp() {
