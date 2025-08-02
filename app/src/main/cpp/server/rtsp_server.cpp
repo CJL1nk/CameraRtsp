@@ -175,14 +175,28 @@ void RTSPServer::handleClient(Session& session) {
                      "%s",
                      cseq, sdp_len, sdp_buffer);
         } else if (strncmp(receive_buffer, "SETUP", 5) == 0 && track_id >= 0) {
+            const char* transport_tcp = strstr(receive_buffer, "Transport: RTP/AVP/TCP");
             auto interleave = track_id == video_track_idx_ ? VIDEO_INTERLEAVE : AUDIO_INTERLEAVE;
-            snprintf(response_buffer, sizeof(response_buffer),
-                     "RTSP/1.0 200 OK\r\n"
-                     "CSeq: %d\r\n"
-                     "Transport: RTP/AVP/TCP;interleaved=%d-%d;unicast\r\n"
-                     "Session: %s\r\n"
-                     "\r\n",
-                     cseq, interleave, interleave + 1, session_id_str);
+            if (transport_tcp) {
+                snprintf(response_buffer, sizeof(response_buffer),
+                         "RTSP/1.0 200 OK\r\n"
+                         "CSeq: %d\r\n"
+                         "Transport: RTP/AVP/TCP;interleaved=%d-%d;unicast\r\n"
+                         "Session: %s\r\n"
+                         "\r\n",
+                         cseq, interleave, interleave + 1, session_id_str);
+            } else {
+                snprintf(response_buffer, sizeof(response_buffer),
+                        "RTSP/1.0 461 Unsupported Transport\r\n"
+                        "CSeq: %d\r\n"
+                        "Public: %s\r\n"
+                        "Supported: Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d\r\n"
+                        "\r\n",
+                        cseq,
+                        public_methods,
+                        interleave, interleave + 1);
+            }
+
         } else if (strncmp(receive_buffer, "PLAY", 4) == 0) {
             session.rtp_session.start(
                     session.client,
