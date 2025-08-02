@@ -31,7 +31,9 @@ void RTSPServer::stop() {
     }
     write(pipe_fd_[1], "x", 1);  // wakes up select()
     for (auto &session : sessions_) {
-        session.closeConnection();
+        if (session.isConnected()) {
+            write(session.client_pipe_fd[1], "x", 1); // wakes up recv()
+        }
         if (session.thread_start.load()) {
             pthread_join(session.thread, nullptr);
         }
@@ -67,8 +69,7 @@ void RTSPServer::startListening() {
         }
 
         if (FD_ISSET(server_, &read_fds)) {
-            auto client = connectClient();
-            if (client < 0) {
+            if (acceptClient() < 0) {
                 break;
             }
         }
@@ -79,7 +80,7 @@ void RTSPServer::startListening() {
 }
 
 
-int32_t RTSPServer::connectClient() {
+int32_t RTSPServer::acceptClient() {
     sockaddr_in client_address {};
     socklen_t client_addrlen = sizeof(client_address);
 
@@ -109,7 +110,7 @@ int32_t RTSPServer::connectClient() {
         pthread_join(session.thread, nullptr);
     }
 
-    pthread_create(&session.thread, nullptr, handleClientThread, &session);
+    pthread_create(&session.thread, nullptr, recvClientThread, &session);
     return client;
 }
 
@@ -144,101 +145,137 @@ int32_t RTSPServer::setupServer() {
     return server_fd;
 }
 
-void RTSPServer::handleClient(Session& session) {
-    char clientIp[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &session.client_address.sin_addr, clientIp, sizeof(clientIp));
+void RTSPServer::recvClient(Session& session) {
+    char client_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &session.client_address.sin_addr, client_ip, sizeof(client_ip));
 
     char response_buffer[MAX_BUFFER_LEN];
     char receive_buffer[MAX_BUFFER_LEN];
     char session_id_str[MAX_SESSION_ID_LEN];
-    char sdp_buffer[MAX_SDP_LEN];
     snprintf(session_id_str, MAX_SESSION_ID_LEN, "session_%d", session.session_id);
     session_id_str[MAX_SESSION_ID_LEN - 1] = '\0';
     pthread_setname_np(pthread_self(), session_id_str);
 
+    pipe(session.client_pipe_fd);
+    fd_set read_fds;
+    int max_fd = (session.client > session.client_pipe_fd[0]) ? session.client : session.client_pipe_fd[0];
+
     while (running_.load()) {
-        auto len = recv(session.client, receive_buffer, sizeof(receive_buffer) - 1, 0);
-        if (len <= 0) break;
-        receive_buffer[len] = '\0';
+        FD_ZERO(&read_fds);
+        FD_SET(session.client, &read_fds);
+        FD_SET(session.client_pipe_fd[0], &read_fds);
 
-        auto cseq = findCSeq(receive_buffer);
-        if (cseq < 0) continue;
+        select(max_fd + 1, &read_fds, nullptr, nullptr, nullptr);
 
-        auto track_id = findTrackId(receive_buffer);
-
-        if (strncmp(receive_buffer, "OPTIONS", 7) == 0) {
-            snprintf(response_buffer, sizeof(response_buffer),
-                     "RTSP/1.0 200 OK\r\n"
-                     "CSeq: %d\r\n"
-                     "Public: %s\r\n"
-                     "\r\n",
-                     cseq, public_methods);
-        } else if (strncmp(receive_buffer, "DESCRIBE", 8) == 0) {
-            auto sdp_len = prepareSdp(clientIp, sdp_buffer, sizeof(sdp_buffer));
-            snprintf(response_buffer, sizeof(response_buffer),
-                     "RTSP/1.0 200 OK\r\n"
-                     "CSeq: %d\r\n"
-                     "Content-Type: application/sdp\r\n"
-                     "Content-Length: %zu\r\n"
-                     "\r\n"
-                     "%s",
-                     cseq, sdp_len, sdp_buffer);
-        } else if (strncmp(receive_buffer, "SETUP", 5) == 0 && track_id >= 0) {
-            const char* transport_tcp = strstr(receive_buffer, "Transport: RTP/AVP/TCP");
-            auto interleave = track_id == video_track_idx_ ? VIDEO_INTERLEAVE : AUDIO_INTERLEAVE;
-            if (transport_tcp) {
-                snprintf(response_buffer, sizeof(response_buffer),
-                         "RTSP/1.0 200 OK\r\n"
-                         "CSeq: %d\r\n"
-                         "Transport: RTP/AVP/TCP;interleaved=%d-%d;unicast\r\n"
-                         "Session: %s\r\n"
-                         "\r\n",
-                         cseq, interleave, interleave + 1, session_id_str);
-            } else {
-                snprintf(response_buffer, sizeof(response_buffer),
-                        "RTSP/1.0 461 Unsupported Transport\r\n"
-                        "CSeq: %d\r\n"
-                        "Public: %s\r\n"
-                        "Supported: Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d\r\n"
-                        "\r\n",
-                        cseq,
-                        public_methods,
-                        interleave, interleave + 1);
-            }
-
-        } else if (strncmp(receive_buffer, "PLAY", 4) == 0) {
-            session.rtp_session.start(
-                    session.client,
-                    media_type_ & VIDEO_TYPE ? VIDEO_INTERLEAVE : -1,
-                    media_type_ & AUDIO_TYPE ? AUDIO_INTERLEAVE : -1
-            );
-            snprintf(response_buffer, sizeof(response_buffer),
-                     "RTSP/1.0 200 OK\r\n"
-                     "CSeq: %d\r\n"
-                     "Session: %s\r\n"
-                     "\r\n",
-                     cseq, session_id_str);
-        } else if (strncmp(receive_buffer, "TEARDOWN", 8) == 0) {
-            snprintf(response_buffer, sizeof(response_buffer),
-                     "RTSP/1.0 200 OK\r\n"
-                     "CSeq: %d\r\n"
-                     "Session: %s\r\n"
-                     "\r\n",
-                     cseq, session_id_str);
+        if (FD_ISSET(session.client_pipe_fd[0], &read_fds)) {
+            char buf[1];
+            read(session.client_pipe_fd[0], buf, 1);
             break;
-        } else {
-            snprintf(response_buffer, sizeof(response_buffer),
-                     "RTSP/1.0 404 Invalid command\r\n"
-                     "CSeq: %d\r\n"
-                     "Public: %s\r\n"
-                     "\r\n",
-                     cseq, public_methods);
         }
-        send(session.client, response_buffer, strlen(response_buffer), 0);
+
+        if (FD_ISSET(session.client, &read_fds)) {
+            if (handleClient(session,
+                             response_buffer, sizeof(response_buffer),
+                             receive_buffer, sizeof(receive_buffer),
+                             client_ip, session_id_str) < 0) {
+                break;
+            }
+        }
     }
 
-    session.closeConnection();
-    LOGD(LOG_TAG, "Client %s disconnected, exiting listening loop.", clientIp);
+    session.rtp_session.stop();
+    close(session.client);
+    session.client = -1;
+    LOGD(LOG_TAG, "Client %s disconnected, exiting listening loop.", client_ip);
+}
+
+int32_t RTSPServer::handleClient(RTSPServer::Session &session,
+                                 char* response_buffer, size_t response_buffer_size,
+                                 char* receive_buffer, size_t receive_buffer_size,
+                                 char* clientIp, char* session_id_str) {
+    auto len = recv(session.client, receive_buffer,  receive_buffer_size - 1, 0);
+    if (len <= 0) {
+        LOGE(LOG_TAG, "Failed to receive data from client");
+        return -1;
+    }
+    receive_buffer[len] = '\0';
+
+    auto cseq = findCSeq(receive_buffer);
+    if (cseq < 0) return 0;
+
+    auto track_id = findTrackId(receive_buffer);
+
+    if (strncmp(receive_buffer, "OPTIONS", 7) == 0) {
+        snprintf(response_buffer, response_buffer_size,
+                 "RTSP/1.0 200 OK\r\n"
+                 "CSeq: %d\r\n"
+                 "Public: %s\r\n"
+                 "\r\n",
+                 cseq, public_methods);
+    } else if (strncmp(receive_buffer, "DESCRIBE", 8) == 0) {
+        char sdp_buffer[MAX_SDP_LEN];
+        auto sdp_len = prepareSdp(clientIp, sdp_buffer, sizeof(sdp_buffer));
+        snprintf(response_buffer, response_buffer_size,
+                 "RTSP/1.0 200 OK\r\n"
+                 "CSeq: %d\r\n"
+                 "Content-Type: application/sdp\r\n"
+                 "Content-Length: %zu\r\n"
+                 "\r\n"
+                 "%s",
+                 cseq, sdp_len, sdp_buffer);
+    } else if (strncmp(receive_buffer, "SETUP", 5) == 0 && track_id >= 0) {
+        const char* transport_tcp = strstr(receive_buffer, "Transport: RTP/AVP/TCP");
+        auto interleave = track_id == video_track_idx_ ? VIDEO_INTERLEAVE : AUDIO_INTERLEAVE;
+        if (transport_tcp) {
+            snprintf(response_buffer, response_buffer_size,
+                     "RTSP/1.0 200 OK\r\n"
+                     "CSeq: %d\r\n"
+                     "Transport: RTP/AVP/TCP;interleaved=%d-%d;unicast\r\n"
+                     "Session: %s\r\n"
+                     "\r\n",
+                     cseq, interleave, interleave + 1, session_id_str);
+        } else {
+            snprintf(response_buffer, response_buffer_size,
+                     "RTSP/1.0 461 Unsupported Transport\r\n"
+                     "CSeq: %d\r\n"
+                     "Public: %s\r\n"
+                     "Supported: Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d\r\n"
+                     "\r\n",
+                     cseq,
+                     public_methods,
+                     interleave, interleave + 1);
+        }
+
+    } else if (strncmp(receive_buffer, "PLAY", 4) == 0) {
+        session.rtp_session.start(
+                session.client,
+                media_type_ & VIDEO_TYPE ? VIDEO_INTERLEAVE : -1,
+                media_type_ & AUDIO_TYPE ? AUDIO_INTERLEAVE : -1
+        );
+        snprintf(response_buffer, response_buffer_size,
+                 "RTSP/1.0 200 OK\r\n"
+                 "CSeq: %d\r\n"
+                 "Session: %s\r\n"
+                 "\r\n",
+                 cseq, session_id_str);
+    } else if (strncmp(receive_buffer, "TEARDOWN", 8) == 0) {
+        snprintf(response_buffer, response_buffer_size,
+                 "RTSP/1.0 200 OK\r\n"
+                 "CSeq: %d\r\n"
+                 "Session: %s\r\n"
+                 "\r\n",
+                 cseq, session_id_str);
+        return -1;
+    } else {
+        snprintf(response_buffer, response_buffer_size,
+                 "RTSP/1.0 404 Invalid command\r\n"
+                 "CSeq: %d\r\n"
+                 "Public: %s\r\n"
+                 "\r\n",
+                 cseq, public_methods);
+    }
+    send(session.client, response_buffer, strlen(response_buffer), 0);
+    return 0;
 }
 
 int32_t RTSPServer::getAvailableSession() const {

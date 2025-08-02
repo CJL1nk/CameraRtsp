@@ -36,18 +36,11 @@ private:
         RTSPServer* server;
         RtpSession rtp_session;
         sockaddr_in client_address;
+        int client_pipe_fd[2];
         const int32_t session_id;
         int32_t client = -1;
         pthread_t thread = 0;
         std::atomic<bool> thread_start = false;
-
-        void closeConnection() {
-            if (isConnected()) {
-                rtp_session.stop();
-                close(client);
-                client = -1;
-            }
-        }
 
         bool isConnected() const {
             return client >= 0 && rtp_session.isRunning();
@@ -75,11 +68,13 @@ private:
                 this,
                 RtpSession {video_source_, audio_source_},
                 {},
+                {},
                 0
             },
             Session {
                 this,
                 RtpSession {video_source_, audio_source_},
+                {},
                 {},
                 1
             }
@@ -88,8 +83,12 @@ private:
 private:
     int32_t setupServer();
     void startListening();
-    int32_t connectClient();
-    void handleClient(Session& session);
+    int32_t acceptClient();
+    void recvClient(Session& session);
+    int32_t handleClient(RTSPServer::Session &session,
+                         char* response_buffer, size_t response_buffer_size,
+                         char* receive_buffer, size_t receive_buffer_size,
+                         char* clientIp, char* session_id_str);
     int32_t getAvailableSession() const;
     bool isClientConnected(int32_t client) const;
     size_t prepareSdp(const char* client_ip, char* sdp_buffer, size_t buffer_size) const;
@@ -103,9 +102,9 @@ private:
         return nullptr;
     }
 
-    static void* handleClientThread(void* arg) {
+    static void* recvClientThread(void* arg) {
         auto args = static_cast<Session*>(arg);
-        args->server->handleClient(*args);
+        args->server->recvClient(*args);
         return nullptr;
     }
 };
