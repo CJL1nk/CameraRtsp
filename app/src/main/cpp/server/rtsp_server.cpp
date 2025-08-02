@@ -29,6 +29,7 @@ void RTSPServer::stop() {
     if (!running_.exchange(false)) {
         return;
     }
+    write(pipe_fd_[1], "x", 1);  // wakes up select()
     for (auto &session : sessions_) {
         session.closeConnection();
         if (session.thread_start.load()) {
@@ -39,7 +40,7 @@ void RTSPServer::stop() {
     LOGD("CleanUp", "gracefully clean up rtsp server");
 }
 
-void RTSPServer::startListeningInterval() {
+void RTSPServer::startListening() {
     server_ = setupServer();
     pthread_setname_np(pthread_self(), "RTSPServer");
 
@@ -48,16 +49,24 @@ void RTSPServer::startListeningInterval() {
         return;
     }
 
+    pipe(pipe_fd_);
     fd_set read_fds;
-    timeval timeout {};
-    timeout.tv_sec = 1;  // 1s timeout
-    timeout.tv_usec = 0;
+    int max_fd = (server_ > pipe_fd_[0]) ? server_ : pipe_fd_[0];
 
     while (running_.load()) {
         FD_ZERO(&read_fds);
         FD_SET(server_, &read_fds);
-        auto activity = select(server_ + 1, &read_fds, nullptr, nullptr, &timeout);
-        if (activity > 0 && FD_ISSET(server_, &read_fds)) {
+        FD_SET(pipe_fd_[0], &read_fds);
+
+        select(max_fd  + 1, &read_fds, nullptr, nullptr, nullptr);
+
+        if (FD_ISSET(pipe_fd_[0], &read_fds)) { // waked up by pipe_fd_[1]
+            char buf[1];
+            read(pipe_fd_[0], buf, 1);
+            break;
+        }
+
+        if (FD_ISSET(server_, &read_fds)) {
             auto client = connectClient();
             if (client < 0) {
                 break;

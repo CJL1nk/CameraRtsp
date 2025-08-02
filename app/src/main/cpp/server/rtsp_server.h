@@ -63,6 +63,7 @@ private:
     int32_t audio_track_idx_ = -1;
 
     int32_t server_ = -1;
+    int pipe_fd_[2] = {};
     sockaddr_in server_address_ {};
     socklen_t server_addrlen_ = sizeof(server_address_);
     const char* public_methods = "OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN";
@@ -86,7 +87,7 @@ private:
 
 private:
     int32_t setupServer();
-    void startListeningInterval();
+    void startListening();
     int32_t connectClient();
     void handleClient(Session& session);
     int32_t getAvailableSession() const;
@@ -98,7 +99,7 @@ private:
 
     static void* startListeningThread(void* arg) {
         auto* self = reinterpret_cast<RTSPServer*>(arg);
-        self->startListeningInterval();  // call the member function
+        self->startListening();  // call the member function
         return nullptr;
     }
 
