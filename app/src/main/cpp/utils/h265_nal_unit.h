@@ -3,6 +3,8 @@
 #include "jni.h"
 #include <array>
 
+#define NAL_TYPE(data, nal) ((data[nal.start + nal.codeSize] >> 1) & 0x3F)
+
 struct NalUnit {
 public:
     size_t start;

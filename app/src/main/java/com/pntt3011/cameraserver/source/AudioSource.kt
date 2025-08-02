@@ -116,16 +116,15 @@ class AudioSource(private val callback: SourceCallback) {
         audioRecord.release()
 
         Log.d("CleanUp", "gracefully clean up audio source")
+        callback.handler.post {
+            callback.onClosed()
+        }
     }
 
 
     fun stop() {
         if (!isRecording) return
         isRecording = false
-        callback.handler.post {
-            encodeExecutor?.awaitTermination(5, TimeUnit.SECONDS)
-            callback.onClosed()
-        }
     }
 
     private external fun onAudioFrameAvailableNative(buffer: ByteBuffer, offset: Int, size: Int, time: Long, flags: Int)

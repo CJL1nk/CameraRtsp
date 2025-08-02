@@ -5,7 +5,6 @@
 #include "utils/h265_nal_unit.h"
 #include "utils/constant.h"
 
-#define NAL_TYPE(data, nal) ((data[nal.start + nal.codeSize] >> 1) & 0x3F)
 #define FU_TYPE(data, nal) ((data[nal.start + nal.codeSize] & 0x81) | ((H265_FU_PAYLOAD_TYPE << 1) & 0x7E))
 
 
@@ -69,7 +68,7 @@ static int32_t packetizeH265Frame(uint8_t interleave, int32_t ssrc,
 
     // Payload header
     dst[i++] = FU_TYPE(src.data, current_nal);
-    dst[i++] = src.data[current_nal.start + 1];
+    dst[i++] = src.data[current_nal.start + current_nal.codeSize + 1];
 
     // Fu header
     uint8_t fu_header = NAL_TYPE(src.data, current_nal);
@@ -82,7 +81,7 @@ static int32_t packetizeH265Frame(uint8_t interleave, int32_t ssrc,
 
     // Payload
     if (is_segment_start) {
-        src_offset += current_nal.codeSize;
+        src_offset += current_nal.codeSize + H265_PAYLOAD_HEADER_SIZE; // The FU Header already contains the Payload Header
     }
     std::memcpy(dst + i, src.data.data() + src_offset, packet_size - header_size - H265_FU_HEADER_SIZE);
     src_offset = src_offset + packet_size - header_size - H265_FU_HEADER_SIZE;

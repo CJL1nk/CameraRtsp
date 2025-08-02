@@ -289,8 +289,6 @@ class CameraSource(context: Context, callback: SourceCallback) {
 
         override fun onClosed(session: CameraCaptureSession) {
             isStopped = true
-            encodeExecutor.awaitTermination(5, TimeUnit.SECONDS)
-            cameraCallback.onClosed()
         }
 
         override fun onConfigureFailed(session: CameraCaptureSession) { }
@@ -452,6 +450,10 @@ class CameraSource(context: Context, callback: SourceCallback) {
         inputSurfaceTexture = null
 
         Log.d("CleanUp", "gracefully clean up video source")
+
+        cameraHandler.post {
+            cameraCallback.onClosed()
+        }
     }
 
     private val vertexData = floatArrayOf(

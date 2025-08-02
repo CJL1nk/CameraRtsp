@@ -3,11 +3,11 @@
 #include "utils/base64.h"
 #include "utils/h265_nal_unit.h"
 
-#define NAL_TYPE(data, nal) ((data[nal.start + nal.codeSize] >> 1) & 0x3F)
 
 void NativeVideoSource::onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info) {
     if (info.flags & BUFFER_FLAG_CODEC_CONFIG) {
         parseParameterSets(info);
+        return;
     }
     for (auto & i : listeners_) {
         if (i != nullptr) {

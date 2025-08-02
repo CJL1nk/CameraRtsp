@@ -46,8 +46,8 @@ private:
     void streaming();
     void markStopped();
     uint32_t calculateRtpTimestamp(int64_t next_frame_timestamp_us) const;
-    int32_t trySendAndAdvance(uint16_t &seq, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);
-    int32_t sendFrame(uint16_t seq, uint32_t rtp_ts, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);
+    int32_t sendFrameAndAdvance(uint16_t &seq, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);
+    int32_t sendFrame(uint16_t &seq, uint32_t rtp_ts, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);
 
     static void* runStreamingThread(void *arg) {
         auto stream = static_cast<VideoStream *>(arg);

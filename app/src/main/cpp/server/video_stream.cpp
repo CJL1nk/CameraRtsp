@@ -67,7 +67,8 @@ void VideoStream::streaming() {
             bool key_frame_missed =
                     latest_buffer_ < pending_buffer_ &&
                     latest_keyframe_buffer_ < pending_key_frame_buffer_ &&
-                    latest_buffer_ != latest_keyframe_buffer_;
+                    latest_buffer_ != latest_keyframe_buffer_ &&
+                    pending_buffer_ != pending_key_frame_buffer_;
 
             latest_buffer_ = pending_buffer_;
             if (latest_keyframe_buffer_ != pending_key_frame_buffer_) {
@@ -76,14 +77,12 @@ void VideoStream::streaming() {
             lock.unlock();
 
             if (key_frame_missed) {
-                if (trySendAndAdvance(seq, latest_keyframe_buffer_)) {
-                    LOGE(LOG_TAG, "Failed to send video frame");
+                if (sendFrameAndAdvance(seq, latest_keyframe_buffer_) < 0) {
                     break;
                 }
             }
 
-            if (trySendAndAdvance(seq, latest_buffer_)) {
-                LOGE(LOG_TAG, "Failed to send video frame");
+            if (sendFrameAndAdvance(seq, latest_buffer_) < 0) {
                 break;
             }
         }
@@ -93,14 +92,13 @@ void VideoStream::streaming() {
 }
 
 int32_t
-VideoStream::trySendAndAdvance(uint16_t &seq, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame) {
+VideoStream::sendFrameAndAdvance(uint16_t &seq, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame) {
     auto rtp_ts = calculateRtpTimestamp(frame.presentation_time_us);
     if (sendFrame(seq, rtp_ts, frame) < 0) {
         return -1;
     }
     last_presentation_time_us_ = frame.presentation_time_us;
     last_rtp_ts_ = rtp_ts;
-    seq = (seq + 1) % 65536;
     perf_monitor_.onFrameSend(last_presentation_time_us_);
     return 0;
 }
@@ -110,23 +108,29 @@ uint32_t VideoStream::calculateRtpTimestamp(int64_t next_frame_timestamp_us) con
     return last_rtp_ts_ + delta_frame_timestamp_us * VIDEO_SAMPLE_RATE / 1000000;
 }
 
-int32_t VideoStream::sendFrame(uint16_t seq, uint32_t rtp_ts, const FrameBuffer<MAX_VIDEO_FRAME_SIZE>&frame) {
+int32_t VideoStream::sendFrame(uint16_t &seq, uint32_t rtp_ts, const FrameBuffer<MAX_VIDEO_FRAME_SIZE>&frame) {
     auto nalUnits = extractNalUnits<16>(frame.data.data(), 0, frame.size);
     for (auto nal : nalUnits) {
         if (!nal.isValid()) {
             continue;
         }
         size_t offset = nal.start;
-        while (offset < nal.end) {
+        while (running_.load() && offset < nal.end) {
             auto read = packetizeH265Frame(
                     interleave_, ssrc_,
                     seq, rtp_ts,
                     frame, offset, nal,
                     socket_buffer_.data.data(), socket_buffer_.data.size()
             );
-            if (send(socket_, socket_buffer_.data.data(), read, 0) < 0) {
+            if (read < 0) {
+                LOGE(LOG_TAG, "Failed to packetize video frame");
                 return -1;
             }
+            if (send(socket_, socket_buffer_.data.data(), read, 0) < 0) {
+                LOGE(LOG_TAG, "Failed to send video frame");
+                return -1;
+            }
+            seq = (seq + 1) % 65536;
         }
     }
     return 0;
