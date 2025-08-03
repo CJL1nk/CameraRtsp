@@ -26,21 +26,29 @@ void VideoStream::stop() {
     bool was_running = running_.load();
     markStopped();
     if (was_running) {
-        pending_condition_.notify_one();
+        frame_condition_.notify_one();
         pthread_join(processing_thread_, nullptr);
     }
     LOGD("CleanUp", "gracefully clean up video stream");
 }
 
 void VideoStream::processFrame(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame) {
-    {
-        std::lock_guard<std::mutex> lock(pending_mutex_);
-        pending_buffer_ = frame;
-        if (frame.flags & BUFFER_FLAG_KEY_FRAME) {
-            pending_key_frame_buffer_ = frame;
-        }
-        pending_condition_.notify_one();
+    int index = 1 - frame_read_idx_.load(std::memory_order_acquire);
+    if (frame.flags & BUFFER_FLAG_KEY_FRAME) {
+        keyframe_buffer_[index] = frame;
+        frame_buffer_ready_[index] = IFRAME;
+
+    } else if (frame.size <= NORMAL_VIDEO_FRAME_SIZE) {
+        auto& non_keyframe = frame_buffer_[index];
+        memcpy(non_keyframe.data.data(), frame.data.data(), frame.size);
+        non_keyframe.presentation_time_us = frame.presentation_time_us;
+        non_keyframe.size = frame.size;
+        non_keyframe.flags = frame.flags;
+        frame_buffer_ready_[index] = NON_IFRAME;
     }
+
+    frame_write_idx_.store(index, std::memory_order_release);
+    frame_condition_.notify_one();
     perf_monitor_.onFrameAvailable(frame.presentation_time_us);
 }
 
@@ -50,49 +58,67 @@ void VideoStream::streaming() {
     auto seq = genSequenceNumber();
 
     while (running_.load()) {
-        std::unique_lock<std::mutex> lock(pending_mutex_);
+        {
+            std::unique_lock<std::mutex> lock(pending_mutex_);
 
-        // Wait for frames or stop signal
-        pending_condition_.wait(lock, [this]{
-            return (last_presentation_time_us_ < pending_buffer_.presentation_time_us &&
-                    pending_key_frame_buffer_.size > 0) ||
-                    !running_.load();
-        });
+            // Wait for frames or stop signal
+            frame_condition_.wait(lock, [this]{
+                auto idx = frame_write_idx_.load(std::memory_order_acquire);
+                auto buffer_timestamp_us =
+                        frame_buffer_ready_[idx] == IFRAME ? keyframe_buffer_[idx].presentation_time_us :
+                        frame_buffer_ready_[idx] == NON_IFRAME ? frame_buffer_[idx].presentation_time_us :
+                        0;
+                return (last_presentation_time_us_ < buffer_timestamp_us &&
+                        keyframe_buffer_[idx].size > 0) ||
+                       !running_.load();
+            });
+        }
 
         if (!running_.load()) {
             break;
         }
 
-        if (last_presentation_time_us_ < pending_buffer_.presentation_time_us) {
-            bool key_frame_missed =
-                    latest_buffer_ < pending_buffer_ &&
-                    latest_keyframe_buffer_ < pending_key_frame_buffer_ &&
-                    latest_buffer_ != latest_keyframe_buffer_ &&
-                    pending_buffer_ != pending_key_frame_buffer_;
+        auto idx = frame_write_idx_.load(std::memory_order_acquire);
+        frame_read_idx_.store(idx, std::memory_order_release);
+        auto &frame_buffer = frame_buffer_[idx];
+        auto &keyframe_buffer = keyframe_buffer_[idx];
+        auto type = frame_buffer_ready_[idx];
+        frame_buffer_ready_[idx] = false;
+        auto buffer_timestamp_us =
+                type == IFRAME ? keyframe_buffer.presentation_time_us :
+                type == NON_IFRAME ? frame_buffer.presentation_time_us :
+                0;
 
-            latest_buffer_ = pending_buffer_;
-            if (latest_keyframe_buffer_ != pending_key_frame_buffer_) {
-                latest_keyframe_buffer_ = pending_key_frame_buffer_;
-            }
-            lock.unlock();
+        if (last_presentation_time_us_ >= buffer_timestamp_us) {
+            continue;
+        }
 
-            if (key_frame_missed) {
-                if (sendFrameAndAdvance(seq, latest_keyframe_buffer_) < 0) {
-                    break;
-                }
-            }
-
-            if (sendFrameAndAdvance(seq, latest_buffer_) < 0) {
+        if (type == IFRAME) {
+            if (sendFrameAndAdvance(seq, keyframe_buffer) < 0) {
                 break;
             }
+            continue;
+        }
+
+        // type == NON_IFRAME
+        bool key_frame_missed = last_presentation_time_us_ < keyframe_buffer.presentation_time_us;
+        if (key_frame_missed) {
+            if (sendFrameAndAdvance(seq, keyframe_buffer) < 0) {
+                break;
+            }
+        }
+
+        if (sendFrameAndAdvance(seq, frame_buffer) < 0) {
+            break;
         }
     }
     markStopped();
     LOGD(LOG_TAG, "Processing thread finished");
 }
 
+template<size_t BufferCapacity>
 int32_t
-VideoStream::sendFrameAndAdvance(uint16_t &seq, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame) {
+VideoStream::sendFrameAndAdvance(uint16_t &seq, const FrameBuffer<BufferCapacity> &frame) {
     auto rtp_ts = calculateRtpTimestamp(frame.presentation_time_us);
     if (sendFrame(seq, rtp_ts, frame) < 0) {
         return -1;
@@ -108,7 +134,8 @@ uint32_t VideoStream::calculateRtpTimestamp(int64_t next_frame_timestamp_us) con
     return last_rtp_ts_ + delta_frame_timestamp_us * VIDEO_SAMPLE_RATE / 1000000;
 }
 
-int32_t VideoStream::sendFrame(uint16_t &seq, uint32_t rtp_ts, const FrameBuffer<MAX_VIDEO_FRAME_SIZE>&frame) {
+template<size_t BufferCapacity>
+int32_t VideoStream::sendFrame(uint16_t &seq, uint32_t rtp_ts, const FrameBuffer<BufferCapacity>&frame) {
     auto nalUnits = extractNalUnits<16>(frame.data.data(), 0, frame.size);
     for (auto nal : nalUnits) {
         if (!nal.isValid()) {
@@ -119,7 +146,8 @@ int32_t VideoStream::sendFrame(uint16_t &seq, uint32_t rtp_ts, const FrameBuffer
             auto read = packetizeH265Frame(
                     interleave_, ssrc_,
                     seq, rtp_ts,
-                    frame, offset, nal,
+                    frame.data.data(), frame.size,
+                    offset, nal,
                     socket_buffer_.data.data(), socket_buffer_.data.size()
             );
             if (read < 0) {

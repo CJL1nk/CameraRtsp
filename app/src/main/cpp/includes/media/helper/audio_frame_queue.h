@@ -28,7 +28,6 @@ private:
 
 private:
     static constexpr size_t MAX_AUDIO_FRAME_QUEUE_SIZE = 30; // media codec batches 15 frames per encode
-    static constexpr size_t NORMAL_AUDIO_FRAME_SIZE = 256; // 64kbps / (44100Hz / 1024 samples per frame) frames / 8 bits per byte
     static constexpr size_t MAX_CALLBACK = 1;
 
     // State

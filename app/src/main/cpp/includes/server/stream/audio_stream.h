@@ -27,7 +27,10 @@ private:
 
     std::mutex frame_mutex_;
     std::condition_variable frame_condition_;
-    FrameBuffer<MAX_AUDIO_FRAME_SIZE> frame_buffer_;
+    FrameBuffer<MAX_AUDIO_FRAME_SIZE> frame_buffer_[2];
+    bool frame_buffer_ready_[2] { false, false };
+    std::atomic<int> frame_write_idx_ { 0 };
+    std::atomic<int> frame_read_idx_ {0 };
 
     int64_t last_presentation_time_us_ = 0L;
     uint32_t last_rtp_ts_ = 0L;

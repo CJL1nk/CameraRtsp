@@ -10,14 +10,14 @@
 
 static int32_t packetizeH265Frame(uint8_t interleave, int32_t ssrc,
                                   uint16_t seq, uint32_t timestamp,
-                                  const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &src,
+                                  const uint8_t *data, size_t data_size,
                                   size_t &src_offset, const NalUnit& current_nal,
                                   uint8_t *dst, size_t dst_size) {
     size_t header_size = RTP_HEADER_SIZE + H265_PAYLOAD_HEADER_SIZE;
 
     if (src_offset < current_nal.start ||
         src_offset >= current_nal.end ||
-        current_nal.end > src.size ||
+        current_nal.end > data_size ||
         TCP_PREFIX_SIZE + header_size >= dst_size
             ) {
         return -1;
@@ -57,21 +57,21 @@ static int32_t packetizeH265Frame(uint8_t interleave, int32_t ssrc,
     if (is_single_mode) {
         // Payload header
         src_offset += current_nal.codeSize;
-        dst[i++] = src.data[src_offset];
-        dst[i++] = src.data[src_offset + 1];
+        dst[i++] = data[src_offset];
+        dst[i++] = data[src_offset + 1];
 
         // Payload
-        std::memcpy(dst + i, src.data.data() + src_offset, current_nal.end - src_offset);
+        std::memcpy(dst + i, data + src_offset, current_nal.end - src_offset);
         src_offset = current_nal.end;
         return static_cast<int32_t>(TCP_PREFIX_SIZE + packet_size);
     }
 
     // Payload header
-    dst[i++] = FU_TYPE(src.data, current_nal);
-    dst[i++] = src.data[current_nal.start + current_nal.codeSize + 1];
+    dst[i++] = FU_TYPE(data, current_nal);
+    dst[i++] = data[current_nal.start + current_nal.codeSize + 1];
 
     // Fu header
-    uint8_t fu_header = NAL_TYPE(src.data, current_nal);
+    uint8_t fu_header = NAL_TYPE(data, current_nal);
     if (is_segment_start) {
         fu_header |= 0x80;
     } else if (is_segment_end) {
@@ -83,7 +83,7 @@ static int32_t packetizeH265Frame(uint8_t interleave, int32_t ssrc,
     if (is_segment_start) {
         src_offset += current_nal.codeSize + H265_PAYLOAD_HEADER_SIZE; // The FU Header already contains the Payload Header
     }
-    std::memcpy(dst + i, src.data.data() + src_offset, packet_size - header_size - H265_FU_HEADER_SIZE);
+    std::memcpy(dst + i, data + src_offset, packet_size - header_size - H265_FU_HEADER_SIZE);
     src_offset = src_offset + packet_size - header_size - H265_FU_HEADER_SIZE;
     return static_cast<int32_t>(TCP_PREFIX_SIZE + packet_size);
 }

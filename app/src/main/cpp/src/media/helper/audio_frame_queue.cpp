@@ -26,12 +26,13 @@ void NativeAudioFrameQueue::enqueueFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZE>
         return; // Not running
     }
 
-    std::lock_guard<std::mutex> lock(queue_mutex_);
-
-    if (frame_queue_.full()) {
-        QueueBuffer queue_buffer {};
-        frame_queue_.pop_front(queue_buffer);
-        memory_pool_.release(queue_buffer.data);
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        if (frame_queue_.full()) {
+            QueueBuffer queue_buffer {};
+            frame_queue_.pop_front(queue_buffer);
+            memory_pool_.release(queue_buffer.data);
+        }
     }
 
     MemoryPool::Buffer buffer = memory_pool_.acquire(frame.size);
@@ -40,8 +41,12 @@ void NativeAudioFrameQueue::enqueueFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZE>
         return;
     }
     memcpy(memory_pool_.data(buffer), frame.data.data(), frame.size);
-    frame_queue_.push_back(QueueBuffer(buffer, frame.presentation_time_us, frame.size, frame.flags));
-    queue_condition_.notify_one();
+
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        frame_queue_.push_back(QueueBuffer(buffer, frame.presentation_time_us, frame.size, frame.flags));
+        queue_condition_.notify_one();
+    }
 }
 
 void NativeAudioFrameQueue::stop() {

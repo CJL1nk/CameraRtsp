@@ -19,6 +19,10 @@ public:
     bool isRunning() const { return running_.load(); }
 
 private:
+    static constexpr uint8_t NO_FRAME = 0;
+    static constexpr uint8_t IFRAME = 1;
+    static constexpr uint8_t NON_IFRAME = 2;
+
     int32_t ssrc_ = 0;
     uint8_t interleave_ = 0;
 
@@ -26,12 +30,12 @@ private:
     FrameBuffer<RTP_MAX_PACKET_SIZE> socket_buffer_;
 
     std::mutex pending_mutex_;
-    std::condition_variable pending_condition_;
-    FrameBuffer<MAX_VIDEO_FRAME_SIZE> pending_buffer_;
-    FrameBuffer<MAX_VIDEO_FRAME_SIZE> latest_buffer_;
-
-    FrameBuffer<MAX_VIDEO_FRAME_SIZE> pending_key_frame_buffer_;
-    FrameBuffer<MAX_VIDEO_FRAME_SIZE> latest_keyframe_buffer_;
+    std::condition_variable frame_condition_;
+    FrameBuffer<NORMAL_VIDEO_FRAME_SIZE> frame_buffer_[2];
+    FrameBuffer<MAX_VIDEO_FRAME_SIZE> keyframe_buffer_[2];
+    uint8_t frame_buffer_ready_[2] { NO_FRAME, NO_FRAME };
+    std::atomic<int> frame_write_idx_ { 0 };
+    std::atomic<int> frame_read_idx_ {0 };
 
     int64_t last_presentation_time_us_ = 0L;
     uint32_t last_rtp_ts_ = 0L;
@@ -46,8 +50,12 @@ private:
     void streaming();
     void markStopped();
     uint32_t calculateRtpTimestamp(int64_t next_frame_timestamp_us) const;
-    int32_t sendFrameAndAdvance(uint16_t &seq, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);
-    int32_t sendFrame(uint16_t &seq, uint32_t rtp_ts, const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);
+
+    template<size_t BufferCapacity>
+    int32_t sendFrameAndAdvance(uint16_t &seq, const FrameBuffer<BufferCapacity> &frame);
+
+    template<size_t BufferCapacity>
+    int32_t sendFrame(uint16_t &seq, uint32_t rtp_ts, const FrameBuffer<BufferCapacity> &frame);
 
     static void* runStreamingThread(void *arg) {
         auto stream = static_cast<VideoStream *>(arg);
