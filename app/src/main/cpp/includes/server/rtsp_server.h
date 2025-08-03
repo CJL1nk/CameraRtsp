@@ -6,9 +6,9 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include "server/rtp_session.h"
-#include "source/video_source.h"
-#include "source/audio_source.h"
+#include "rtp_session.h"
+#include "media/video_source.h"
+#include "media/audio_source.h"
 
 class RTSPServer {
 public:

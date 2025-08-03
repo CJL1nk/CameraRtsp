@@ -10,17 +10,17 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
 
 add_library(${CMAKE_PROJECT_NAME} SHARED
-        controller/main_controller.cpp
-        server/audio_stream.cpp
-        server/video_stream.cpp
-        server/rtsp_server.cpp
-        source/audio_frame_queue.cpp
-        source/audio_source.cpp
-        source/video_source.cpp
+        src/main_controller.cpp
+        src/server/rtsp_server.cpp
+        src/server/stream/audio_stream.cpp
+        src/server/stream/video_stream.cpp
+        src/media/audio_source.cpp
+        src/media/video_source.cpp
+        src/media/helper/audio_frame_queue.cpp
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/includes
 )
 
 target_link_libraries(${CMAKE_PROJECT_NAME}

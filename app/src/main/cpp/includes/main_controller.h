@@ -1,7 +1,7 @@
 #pragma once
 
-#include "source/video_source.h"
-#include "source/audio_source.h"
+#include "media/video_source.h"
+#include "media/audio_source.h"
 #include "server/rtsp_server.h"
 
 class MainController {

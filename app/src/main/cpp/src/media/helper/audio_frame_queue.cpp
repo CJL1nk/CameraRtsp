@@ -5,7 +5,7 @@
 #include <atomic>
 #include <mutex>
 
-#include "source/audio_frame_queue.h"
+#include "media/helper/audio_frame_queue.h"
 #include "utils/android_log.h"
 
 #define LOG_TAG "NativeAudioFrameQueue"

@@ -1,9 +1,9 @@
 #pragma once
 
 #include <jni.h>
-#include "utils/frame_buffer.h"
-#include "utils/h265_nal_unit.h"
-#include "utils/constant.h"
+#include "frame_buffer.h"
+#include "h265_nal_unit.h"
+#include "constant.h"
 
 #define FU_TYPE(data, nal) ((data[nal.start + nal.codeSize] & 0x81) | ((H265_FU_PAYLOAD_TYPE << 1) & 0x7E))
 

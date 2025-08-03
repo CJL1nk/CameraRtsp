@@ -1,7 +1,7 @@
 #pragma once
 
 #include "jni.h"
-#include "source/video_source.h"
+#include "media/video_source.h"
 #include "utils/server_utils.h"
 #include "utils/stream_perf_monitor.h"
 #include "utils/server_utils.h"

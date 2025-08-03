@@ -1,6 +1,6 @@
 
-#include "video_stream.h"
-#include "source/video_source.h"
+#include "server/stream/video_stream.h"
+#include "media/video_source.h"
 #include "utils/android_log.h"
 #include "utils/h265_nal_unit.h"
 #include "utils/packetizer.h"

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "jni.h"
-#include "video_stream.h"
-#include "audio_stream.h"
+#include "server/stream/video_stream.h"
+#include "server/stream/audio_stream.h"
 #include "utils/server_utils.h"
 
 class RtpSession {

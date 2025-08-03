@@ -3,8 +3,8 @@
 #include "jni.h"
 #include <array>
 #include <mutex>
-#include "utils/circular_deque.h"
-#include "utils/android_log.h"
+#include "circular_deque.h"
+#include "android_log.h"
 
 class StreamPerfMonitor {
 public:

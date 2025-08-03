@@ -2,9 +2,9 @@
 // Created by thanh on 30/07/2025.
 //
 #include <arpa/inet.h>
-#include "rtsp_server.h"
-#include "source/video_source.h"
-#include "source/video_source.h"
+#include "server/rtsp_server.h"
+#include "media/video_source.h"
+#include "media/video_source.h"
 #include "utils/android_log.h"
 
 #define LOG_TAG "RTSPServer"

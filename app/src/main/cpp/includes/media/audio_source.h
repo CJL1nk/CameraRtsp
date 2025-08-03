@@ -3,7 +3,7 @@
 #include <jni.h>
 #include <array>
 #include <mutex>
-#include "source/audio_frame_queue.h"
+#include "media/helper/audio_frame_queue.h"
 #include "utils/constant.h"
 
 

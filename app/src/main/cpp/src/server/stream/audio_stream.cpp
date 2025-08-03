@@ -1,5 +1,5 @@
-#include "audio_stream.h"
-#include "source/audio_source.h"
+#include "server/stream/audio_stream.h"
+#include "media/audio_source.h"
 #include "utils/android_log.h"
 #include "utils/packetizer.h"
 #include "utils/server_utils.h"
