@@ -9,13 +9,13 @@
 #include <pthread.h>
 #include <sys/socket.h>
 
-class AudioStream: public NativeAudioSource::NativeMediaSource::FrameListener {
+class AudioStream {
 public:
     explicit AudioStream(NativeAudioSource* source) : audio_source_(source) {};
     ~AudioStream() = default;
     void start(int32_t socket, uint8_t itl, int32_t ssrc);
     void stop();
-    void onFrameAvailable(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &info) override;
+    void processFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &frame);
     bool isRunning() const { return running_.load(); }
 
 private:
@@ -46,5 +46,10 @@ private:
         auto stream = static_cast<AudioStream *>(arg);
         stream->streaming();
         return nullptr;
+    }
+
+    static void onAudioFrameAvailable(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &info, void* ctx) {
+        auto stream = static_cast<AudioStream *>(ctx);
+        stream->processFrame(info);
     }
 };

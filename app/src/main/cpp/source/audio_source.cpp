@@ -2,6 +2,7 @@
 
 
 void NativeAudioSource::start() {
+    frame_queue_.addFrameCallback(frameQueueAvailableCallback, this);
     frame_queue_.start();
 }
 
@@ -12,32 +13,36 @@ void NativeAudioSource::onFrameAvailable(const FrameBuffer<MAX_AUDIO_FRAME_SIZE>
 
 void NativeAudioSource::stop() {
     frame_queue_.stop();
+    frame_queue_.removeFrameCallback(this);
 }
 
 void NativeAudioSource::processQueuedFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &frame) {
+    std::lock_guard<std::mutex> lock(listener_mutex_);
     for (auto & i : listeners_) {
-        if (i != nullptr) {
-            i->onFrameAvailable(frame);
+        if (i.callback != nullptr && i.context != nullptr) {
+            i.callback(frame, i.context);
         }
     }
 }
 
-bool NativeAudioSource::addListener(NativeMediaSource::FrameListener *listener) {
+bool NativeAudioSource::addListener(FrameAvailableFunction callback, void* ctx) {
     std::lock_guard<std::mutex> lock(listener_mutex_);
     for (auto & i : listeners_) {
-        if (i == nullptr) {
-            i = listener;
+        if (i.callback == nullptr && i.context == nullptr) {
+            i.callback = callback;
+            i.context = ctx;
             return true;
         }
     }
     return false;
 }
 
-bool NativeAudioSource::removeListener(NativeMediaSource::FrameListener *listener) {
+bool NativeAudioSource::removeListener(void* ctx) {
     std::lock_guard<std::mutex> lock(listener_mutex_);
     for (auto & i : listeners_) {
-        if (i == listener) {
-            i = nullptr;
+        if (i.context == ctx) {
+            i.callback = nullptr;
+            i.context = nullptr;
             return true;
         }
     }

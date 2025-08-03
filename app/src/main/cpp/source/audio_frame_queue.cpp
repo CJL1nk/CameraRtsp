@@ -82,7 +82,7 @@ void NativeAudioFrameQueue::runProcessing() {
 }
 
 void NativeAudioFrameQueue::processFrame(const QueueBuffer &frame) {
-    if (frame.size == 0 || !callback_func_) {
+    if (frame.size == 0) {
         return;
     }
 
@@ -108,7 +108,12 @@ void NativeAudioFrameQueue::processFrame(const QueueBuffer &frame) {
     memcpy(buffer.data.data(), memory_pool_.data(frame.data), frame.size);
     memory_pool_.release(frame.data);
 
-    callback_func_(buffer, context_);
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+    for (auto & i : callbacks_) {
+        if (i.callback != nullptr && i.context != nullptr) {
+            i.callback(buffer, i.context);
+        }
+    }
 }
 
 uint64_t NativeAudioFrameQueue::calculateDelayNanos(int64_t presentation_time_us) {
@@ -129,5 +134,29 @@ uint64_t NativeAudioFrameQueue::calculateDelayNanos(int64_t presentation_time_us
     }
 
     return 0;
+}
+
+bool NativeAudioFrameQueue::addFrameCallback(NativeAudioFrameQueue::FrameCallbackFunction callback_fn, void* ctx) {
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+    for (auto & i : callbacks_) {
+        if (i.callback == nullptr && i.context == nullptr) {
+            i.callback = callback_fn;
+            i.context = ctx;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool NativeAudioFrameQueue::removeFrameCallback(void* ctx) {
+    std::lock_guard<std::mutex> lock(callback_mutex_);
+    for (auto & i : callbacks_) {
+        if (i.context == ctx) {
+            i.callback = nullptr;
+            i.context = nullptr;
+            return true;
+        }
+    }
+    return false;
 }
 

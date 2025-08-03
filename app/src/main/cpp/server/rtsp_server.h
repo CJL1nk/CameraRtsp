@@ -97,7 +97,7 @@ private:
     static int32_t findCSeq(const char* request);
 
     static void* startListeningThread(void* arg) {
-        auto* self = reinterpret_cast<RTSPServer*>(arg);
+        auto* self = static_cast<RTSPServer*>(arg);
         self->startListening();  // call the member function
         return nullptr;
     }

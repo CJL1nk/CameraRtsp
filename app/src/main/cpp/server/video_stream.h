@@ -9,13 +9,13 @@
 #include <pthread.h>
 #include <sys/socket.h>
 
-class VideoStream: public NativeVideoSource::NativeMediaSource::FrameListener {
+class VideoStream {
 public:
     explicit VideoStream(NativeVideoSource *video_source) : video_source_(video_source) {};
     ~VideoStream() = default;
     void start(int32_t socket, uint8_t itl, int32_t ssrc);
     void stop();
-    void onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info) override;
+    void processFrame(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame);
     bool isRunning() const { return running_.load(); }
 
 private:
@@ -53,5 +53,10 @@ private:
         auto stream = static_cast<VideoStream *>(arg);
         stream->streaming();
         return nullptr;
+    }
+
+    static void onVideoFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info, void* ctx) {
+        auto stream = static_cast<VideoStream *>(ctx);
+        stream->processFrame(info);
     }
 };

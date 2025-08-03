@@ -4,44 +4,47 @@
 #include "utils/h265_nal_unit.h"
 
 
-void NativeVideoSource::onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info) {
-    if (info.flags & BUFFER_FLAG_CODEC_CONFIG) {
-        parseParameterSets(info);
+void NativeVideoSource::onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame) {
+    if (frame.flags & BUFFER_FLAG_CODEC_CONFIG) {
+        parseParameterSets(frame);
         return;
     }
+    std::lock_guard<std::mutex> lock(listener_mutex_);
     for (auto & i : listeners_) {
-        if (i != nullptr) {
-            i->onFrameAvailable(info);
+        if (i.callback != nullptr && i.context != nullptr) {
+            i.callback(frame, i.context);
         }
     }
 }
 
-bool NativeVideoSource::addListener(NativeMediaSource::FrameListener *listener) {
+bool NativeVideoSource::addListener(FrameAvailableFunction callback, void* ctx) {
     std::lock_guard<std::mutex> lock(listener_mutex_);
     for (auto & i : listeners_) {
-        if (i == nullptr) {
-            i = listener;
+        if (i.callback == nullptr && i.context == nullptr) {
+            i.callback = callback;
+            i.context = ctx;
             return true;
         }
     }
     return false;
 }
 
-bool NativeVideoSource::removeListener(NativeMediaSource::FrameListener *listener) {
+bool NativeVideoSource::removeListener(void* ctx) {
     std::lock_guard<std::mutex> lock(listener_mutex_);
     for (auto & i : listeners_) {
-        if (i == listener) {
-            i = nullptr;
+        if (i.context == ctx) {
+            i.callback = nullptr;
+            i.context = nullptr;
             return true;
         }
     }
     return false;
 }
 
-void NativeVideoSource::parseParameterSets(const FrameBuffer<102400> &info) {
-    auto nals = extractNalUnits<3>(info.data.data(), 0, info.size);
+void NativeVideoSource::parseParameterSets(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame) {
+    auto nals = extractNalUnits<3>(frame.data.data(), 0, frame.size);
     for (auto nal : nals) {
-        auto nal_type = NAL_TYPE(info.data, nal);
+        auto nal_type = NAL_TYPE(frame.data, nal);
         char* dst = nullptr;
         if (nal_type == 32) {
             dst = vps;
@@ -51,7 +54,7 @@ void NativeVideoSource::parseParameterSets(const FrameBuffer<102400> &info) {
             dst = pps;
         }
         if (dst != nullptr) {
-            convertBase64(info.data.data(), nal.start, nal.end, dst);
+            convertBase64(frame.data.data(), nal.start, nal.end, dst);
         }
     }
     params_initialized_.exchange(true);

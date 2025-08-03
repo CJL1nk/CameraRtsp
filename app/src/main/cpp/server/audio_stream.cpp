@@ -11,7 +11,7 @@ void AudioStream::start(int32_t socket, uint8_t itl, int32_t ssrc) {
         return; // Already running
     }
     if (audio_source_ != nullptr) {
-        audio_source_->addListener(this);
+        audio_source_->addListener(onAudioFrameAvailable, this);
     }
     socket_ = socket;
     interleave_ = itl;
@@ -30,7 +30,7 @@ void AudioStream::stop() {
     LOGD("CleanUp", "gracefully clean up audio stream");
 }
 
-void AudioStream::onFrameAvailable(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &info) {
+void AudioStream::processFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &info) {
     {
         std::lock_guard<std::mutex> lock(frame_mutex_);
         frame_buffer_ = info;

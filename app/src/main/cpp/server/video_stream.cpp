@@ -13,7 +13,7 @@ void VideoStream::start(int32_t socket, uint8_t itl, int32_t ssrc) {
         return; // Already running
     }
     if (video_source_ != nullptr) {
-        video_source_->addListener(this);
+        video_source_->addListener(onVideoFrameAvailable, this);
     }
     socket_ = socket;
     interleave_ = itl;
@@ -32,16 +32,16 @@ void VideoStream::stop() {
     LOGD("CleanUp", "gracefully clean up video stream");
 }
 
-void VideoStream::onFrameAvailable(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &info) {
+void VideoStream::processFrame(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame) {
     {
         std::lock_guard<std::mutex> lock(pending_mutex_);
-        pending_buffer_ = info;
-        if (info.flags & BUFFER_FLAG_KEY_FRAME) {
-            pending_key_frame_buffer_ = info;
+        pending_buffer_ = frame;
+        if (frame.flags & BUFFER_FLAG_KEY_FRAME) {
+            pending_key_frame_buffer_ = frame;
         }
         pending_condition_.notify_one();
     }
-    perf_monitor_.onFrameAvailable(info.presentation_time_us);
+    perf_monitor_.onFrameAvailable(frame.presentation_time_us);
 }
 
 void VideoStream::streaming() {

@@ -10,16 +10,26 @@
 
 class NativeAudioFrameQueue {
 public:
-    typedef void (*FrameCallback)(const FrameBuffer<MAX_AUDIO_FRAME_SIZE>&, void* context);
-    explicit NativeAudioFrameQueue(FrameCallback callback, void* ctx) : callback_func_(callback), context_(ctx) {}
+    using FrameCallbackFunction = void (*)(const FrameBuffer<MAX_AUDIO_FRAME_SIZE>&, void* context);
+
+    NativeAudioFrameQueue() = default;
     ~NativeAudioFrameQueue();
     void start();
     void stop();
     void enqueueFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &frame);
+    bool addFrameCallback(FrameCallbackFunction callback_fn, void* ctx);
+    bool removeFrameCallback(void* ctx);
+
+private:
+    struct FrameCallback {
+        FrameCallbackFunction callback;
+        void* context;
+    };
 
 private:
     static constexpr size_t MAX_AUDIO_FRAME_QUEUE_SIZE = 30; // media codec batches 15 frames per encode
     static constexpr size_t NORMAL_AUDIO_FRAME_SIZE = 256; // 64kbps / (44100Hz / 1024 samples per frame) frames / 8 bits per byte
+    static constexpr size_t MAX_CALLBACK = 1;
 
     // State
     std::atomic<bool> running_ = false;
@@ -54,8 +64,8 @@ private:
     bool timing_initialized_ = false;
 
     // Callback
-    FrameCallback callback_func_;
-    void* context_;
+    std::mutex callback_mutex_;
+    FrameCallback callbacks_[MAX_CALLBACK] {};
 
     // Methods
     void runProcessing();
@@ -64,7 +74,7 @@ private:
 
 private:
     static void* runProcessingThread(void* arg) {
-        auto* self = reinterpret_cast<NativeAudioFrameQueue*>(arg);
+        auto* self = static_cast<NativeAudioFrameQueue*>(arg);
         self->runProcessing();  // call the member function
         return nullptr;
     }
