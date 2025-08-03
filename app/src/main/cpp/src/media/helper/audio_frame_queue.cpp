@@ -7,6 +7,7 @@
 
 #include "media/helper/audio_frame_queue.h"
 #include "utils/android_log.h"
+#include "utils/time_utils.h"
 
 #define LOG_TAG "NativeAudioFrameQueue"
 
@@ -21,7 +22,10 @@ void NativeAudioFrameQueue::start() {
     pthread_create(&processing_thread_, nullptr, runProcessingThread, this);
 }
 
-void NativeAudioFrameQueue::enqueueFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &frame) {
+void NativeAudioFrameQueue::enqueueFrame(const uint8_t *data,
+                                         size_t size,
+                                         int64_t presentation_time_us,
+                                         int32_t flags) {
     if (!running_.load()) {
         return; // Not running
     }
@@ -35,16 +39,16 @@ void NativeAudioFrameQueue::enqueueFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZE>
         }
     }
 
-    MemoryPool::Buffer buffer = memory_pool_.acquire(frame.size);
+    MemoryPool::Buffer buffer = memory_pool_.acquire(size);
     if (!buffer.ptr) {
-        LOGE(LOG_TAG, "Failed to acquire memory buffer for frame size %zu", frame.size);
+        LOGE(LOG_TAG, "Failed to acquire memory buffer for frame size %zu", size);
         return;
     }
-    memcpy(memory_pool_.data(buffer), frame.data.data(), frame.size);
+    memcpy(memory_pool_.data(buffer), data, size);
 
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
-        frame_queue_.push_back(QueueBuffer(buffer, frame.presentation_time_us, frame.size, frame.flags));
+        frame_queue_.push_back(QueueBuffer(buffer, presentation_time_us, size, flags));
         queue_condition_.notify_one();
     }
 }

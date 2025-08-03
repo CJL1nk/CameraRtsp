@@ -26,11 +26,6 @@ void MainController::onFrameAvailable(bool is_video, const uint8_t* data,
         std::memcpy(frame.data.data(), data + offset, size);
         video_source_.onFrameAvailable(frame);
     }
-    if (!is_video && size <= MAX_AUDIO_FRAME_SIZE) {
-        FrameBuffer<MAX_AUDIO_FRAME_SIZE> frame {time, size, flags};
-        std::memcpy(frame.data.data(), data + offset, size);
-        audio_source_.onFrameAvailable(frame);
-    }
 }
 
 static MainController* g_main_controller = nullptr;

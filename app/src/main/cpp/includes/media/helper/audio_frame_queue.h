@@ -16,7 +16,10 @@ public:
     ~NativeAudioFrameQueue();
     void start();
     void stop();
-    void enqueueFrame(const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &frame);
+    void enqueueFrame(const uint8_t *data,
+                      size_t size,
+                      int64_t presentation_time_us,
+                      int32_t flags);
     bool addFrameCallback(FrameCallbackFunction callback_fn, void* ctx);
     bool removeFrameCallback(void* ctx);
 
@@ -76,11 +79,5 @@ private:
         auto* self = static_cast<NativeAudioFrameQueue*>(arg);
         self->runProcessing();  // call the member function
         return nullptr;
-    }
-
-    static uint64_t currentTimeNanos() {
-        timespec ts {};
-        clock_gettime(CLOCK_REALTIME, &ts);
-        return (uint64_t)(ts.tv_sec) * 1'000'000'000 + ts.tv_nsec;
     }
 };

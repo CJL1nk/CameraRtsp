@@ -7,7 +7,6 @@ import android.os.Looper
 import android.os.Message
 import android.util.Log
 import com.pntt3011.cameraserver.monitor.TemperatureMonitor
-import com.pntt3011.cameraserver.source.AudioSource
 import com.pntt3011.cameraserver.source.CameraSource
 import com.pntt3011.cameraserver.source.SourceCallback
 
@@ -40,31 +39,18 @@ class MainController(context: Context) {
             }
         })
     }
-    private val audioSource by lazy {
-        AudioSource(object : SourceCallback {
-            override val handler: Handler
-                get() = workerHandler
-
-            override fun onClosed() {
-                stoppedAudio = true
-                checkStop()
-            }
-        })
-    }
 
     fun start() {
         loadNativeLib()
         cameraSource.start()
-        audioSource.start()
         workerHandler.post {
-            startNative(true, true)
+            startNative(false, true)
         }
         temperatureMonitor.start()
     }
 
     fun stop() {
         cameraSource.stop()
-        audioSource.stop()
         workerHandler.post {
             stopNative()
             stoppedNative = true
@@ -74,11 +60,10 @@ class MainController(context: Context) {
     }
 
     private var stoppedVideo = false
-    private var stoppedAudio = false
     private var stoppedNative = false
 
     private fun checkStop() {
-        if (stoppedVideo && stoppedAudio && stoppedNative) {
+        if (stoppedVideo && stoppedNative) {
             cleanUp()
         }
     }

@@ -55,6 +55,50 @@ public:
         return true;
     }
 
+    void push_back(T* src, size_t count) {
+        if (count > Capacity) {
+            // Keep only last Capacity items
+            push_back(src + count - Capacity, Capacity);
+            return;
+        }
+
+        // Overwrite old data if needed
+        if (size_ + count > Capacity) {
+            size_t overflow = size_ + count - Capacity;
+            head_ = (head_ + overflow) % Capacity;
+            size_ -= overflow;
+        }
+
+        size_t first_chunk = std::min(count, Capacity - tail_);
+        std::memcpy(&buffer_[tail_], src, first_chunk * sizeof(T));
+        tail_ = (tail_ + first_chunk) % Capacity;
+
+        size_t remaining = count - first_chunk;
+        if (remaining > 0) {
+            std::memcpy(&buffer_[0], src + first_chunk, remaining * sizeof(T));
+            tail_ = remaining;
+        }
+
+        size_ += count;
+    }
+
+    size_t pop_front(T* dst, size_t count) {
+        size_t actual = std::min(count, size_);
+        size_t first_chunk = std::min(actual, Capacity - head_);
+        std::memcpy(dst, &buffer_[head_], first_chunk * sizeof(T));
+        head_ = (head_ + first_chunk) % Capacity;
+
+        size_t remaining = actual - first_chunk;
+        if (remaining > 0) {
+            std::memcpy(dst + first_chunk, &buffer_[0], remaining * sizeof(T));
+            head_ = remaining;
+        }
+
+        size_ -= actual;
+        return actual;
+    }
+
+
 private:
     std::array<T, Capacity> buffer_;
     size_t head_;  // points to oldest element

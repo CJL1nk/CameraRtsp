@@ -6,7 +6,6 @@
 #define AUDIO_SAMPLE_RATE 44100 // Config
 #define AUDIO_CHANNEL_COUNT 1 // Config
 #define AUDIO_BIT_RATE 64000 // Config
-#define MAX_AUDIO_RECORD_SAMPLE 8192 // Config
 #define MAX_AUDIO_FRAME_SIZE 512 // NORMAL_AUDIO_FRAME_SIZE x 2
 #define NORMAL_AUDIO_FRAME_SIZE 256 // 64kbps / (44100Hz / 1024 samples per frame) frames / 8 bits per byte
 #define AAC_PAYLOAD_TYPE 96
