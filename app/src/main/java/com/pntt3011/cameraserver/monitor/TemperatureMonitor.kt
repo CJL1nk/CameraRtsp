@@ -11,19 +11,22 @@ class TemperatureMonitor(
     private val context: Context,
     private val handler: Handler,
 ) {
+    companion object {
+        private const val MONITOR_INTERVAL = 60_000L
+    }
 
     fun start() {
-        handler.post(runnable)
+        handler.post(periodicLog)
     }
 
     fun stop() {
-        handler.removeCallbacks(runnable)
+        handler.removeCallbacks(periodicLog)
     }
 
-    private val runnable = object : Runnable {
+    private val periodicLog = object : Runnable {
         override fun run() {
             logBatteryTemperature()
-            handler.postDelayed(this, 60_000)
+            handler.postDelayed(this, MONITOR_INTERVAL)
         }
     }
 
