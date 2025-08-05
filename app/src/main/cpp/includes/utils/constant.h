@@ -11,8 +11,8 @@
 #define AAC_PAYLOAD_TYPE 96
 
 #define VIDEO_SAMPLE_RATE 90000 // H264/H265 standard
-#define MAX_VIDEO_FRAME_SIZE 102400 // Keyframe: normal frame x 5)
-#define NORMAL_VIDEO_FRAME_SIZE 20480 // Normal frame: 2Mbps / 24 frames per second / 8 bits per byte
+#define MAX_VIDEO_FRAME_SIZE 128000 // Keyframe: normal frame x 4)
+#define NORMAL_VIDEO_FRAME_SIZE 32000 // Normal frame: 3Mbps / 15 frames per second / 8 bits per byte
 #define H265_PAYLOAD_TYPE 97
 
 #define RTP_MAX_PACKET_SIZE 1024

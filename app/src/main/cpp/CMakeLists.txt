@@ -27,4 +27,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         android
         log
         aaudio
-        mediandk)
+        mediandk
+        camera2ndk
+        EGL
+        GLESv3)

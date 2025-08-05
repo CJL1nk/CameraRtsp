@@ -45,6 +45,8 @@ void VideoStream::processFrame(const FrameBuffer<MAX_VIDEO_FRAME_SIZE> &frame) {
         non_keyframe.size = frame.size;
         non_keyframe.flags = frame.flags;
         frame_buffer_ready_[index] = NON_IFRAME;
+    } else {
+        LOGE(LOG_TAG, "Invalid non-key frame size %zu", frame.size);
     }
 
     frame_write_idx_.store(index, std::memory_order_release);
