@@ -1,11 +1,11 @@
 
-#include "media/M_AFrameQueue.h"
+#include "encoder/E_AACFrameQueue.h"
 #include "utils/CircularDeque.h"
 #include "utils/HierarchyMemoryPool.h"
 
 #define LOG_TAG "AudioFrameQueue"
 
-static tm_t CalculateDelayNs(M_AFrameQueue &queue, tm_t presentation_time_us) {
+static tm_t CalculateDelayNs(E_AACFrameQueue &queue, tm_t presentation_time_us) {
     // Init on first value
     if (!queue.timing_initialized) {
         queue.start_time_ns = NowNanos();
@@ -26,7 +26,7 @@ static tm_t CalculateDelayNs(M_AFrameQueue &queue, tm_t presentation_time_us) {
 }
 
 static void ProcessFrame(
-        M_AFrameQueue &queue,
+        E_AACFrameQueue &queue,
         const QueueBuffer &frame,
         FrameBuffer<MAX_AUDIO_FRAME_SIZE> &buffer) {
 
@@ -68,7 +68,7 @@ static void ProcessFrame(
 }
 
 // Main loop for queue
-static void Run(M_AFrameQueue& queue) {
+static void Run(E_AACFrameQueue& queue) {
     SetThreadName("AudioQueue");
 
     QueueBuffer frame;
@@ -106,14 +106,14 @@ static void Run(M_AFrameQueue& queue) {
 }
 
 static void* StartThread(void* arg) {
-    auto* obj = static_cast<M_AFrameQueue*>(arg);
+    auto* obj = static_cast<E_AACFrameQueue*>(arg);
     if (obj) {
         Run(*obj);
     }
     return nullptr;
 }
 
-static void Reset(M_AFrameQueue& queue) {
+static void Reset(E_AACFrameQueue& queue) {
     Reset(queue.pool);
     Reset(queue.queue);
 
@@ -122,7 +122,7 @@ static void Reset(M_AFrameQueue& queue) {
     queue.timing_initialized = false;
 }
 
-void M_Init(M_AFrameQueue& queue, M_AQueueCb* callback) {
+void E_Init(E_AACFrameQueue& queue, E_AACQueueCb* callback) {
     Init(&queue.lock);
     Init(&queue.condition);
     Init(&queue.thread);
@@ -132,7 +132,7 @@ void M_Init(M_AFrameQueue& queue, M_AQueueCb* callback) {
     queue.callback = callback;
 }
 
-void M_Start(M_AFrameQueue& queue) {
+void E_Start(E_AACFrameQueue& queue) {
     if (Load(&queue.stopping)) {
         return;
     }
@@ -143,8 +143,8 @@ void M_Start(M_AFrameQueue& queue) {
     Start(&queue.thread, StartThread, &queue);
 }
 
-void M_Enqueue(
-        M_AFrameQueue& queue,
+void E_Enqueue(
+        E_AACFrameQueue& queue,
         const byte_t* data,
         sz_t size,
         tm_t timeUs,
@@ -188,12 +188,12 @@ void M_Enqueue(
     Signal(&queue.condition);
 }
 
-static void MarkStopped(M_AFrameQueue& queue) {
+static void MarkStopped(E_AACFrameQueue& queue) {
     Store(&queue.running, false);
     Store(&queue.stopping, false);
 }
 
-void M_Stop(M_AFrameQueue& queue) {
+void E_Stop(E_AACFrameQueue& queue) {
     if (!Load(&queue.running)) {
         return;
     }

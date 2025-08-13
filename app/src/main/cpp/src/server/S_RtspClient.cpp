@@ -10,10 +10,10 @@
 
 void S_Init(S_RtspClient& client,
             S_RtspMedia* media,
-            M_AudioSource* video_source,
-            M_VideoSource* audio_source) {
+            E_H265* video_encoder,
+            E_AAC* audio_encoder) {
     static int_t i = 0;
-    S_Init(client.rtp_session, video_source, audio_source);
+    S_Init(client.rtp_session, video_encoder, audio_encoder);
 
     client.media = media;
     client.id = i++;
@@ -50,6 +50,11 @@ static void StartListen(S_RtspClient& client) {
     WriteStream(client_id_str, CLIENT_ID_LEN, "client_%d", client.id);
 
     LOGI(LOG_TAG, "Client %s connected", client_ip);
+
+    // This function will prepare the metadata for sdp
+    S_Prepare(client.rtp_session,
+              client.media->video_idx >= 0,
+              client.media->audio_idx >= 0);
 
     while (true) {
         if (Wait(client.socket) < 0) {
@@ -286,10 +291,9 @@ static sz_t PrepareSdp(const S_RtspMedia* media,
                           "a=control:*\r\n",
                           client_ip);
 
-    if (media->video_idx >= 0 &&
-        M_ParamsReady(*media->video_source)) {
+    if (media->video_idx >= 0) {
 
-        M_GetParams(*media->video_source, vps, sps, pps);
+        E_GetParams(*media->video_encoder, vps, sps, pps);
         offset += WriteStream(sdp + offset, size - offset,
                               "\r\n"
                               "m=video 0 RTP/AVP %d\r\n"

@@ -6,12 +6,12 @@
 #include "utils/CircularDeque.h"
 #include "utils/Platform.h"
 
-typedef void (*M_AQueueCbFnc)(void* context, const FrameBuffer<MAX_AUDIO_FRAME_SIZE>&);
+typedef void (*E_AACQueueCbFnc)(void* context, const FrameBuffer<MAX_AUDIO_FRAME_SIZE>&);
 
 typedef struct {
     void* context;
-    M_AQueueCbFnc fnc;
-} M_AQueueCb;
+    E_AACQueueCbFnc fnc;
+} E_AACQueueCb;
 
 typedef HierarchyMemoryPool<
         MAX_AUDIO_FRAME_QUEUE_SIZE,
@@ -49,24 +49,24 @@ typedef struct {
     a_bool_t stopping;
 
     // Callback
-    M_AQueueCb* callback;
+    E_AACQueueCb* callback;
 
     // Timing
     tm_t start_time_ns;
     tm_t first_frame_us;
     bool timing_initialized;
-} M_AFrameQueue;
+} E_AACFrameQueue;
 
-void M_Init(M_AFrameQueue& queue, M_AQueueCb* callback);
-void M_Start(M_AFrameQueue& queue);
-void M_Stop(M_AFrameQueue& queue);
+void E_Init(E_AACFrameQueue& queue, E_AACQueueCb* callback);
+void E_Start(E_AACFrameQueue& queue);
+void E_Stop(E_AACFrameQueue& queue);
 
 // This function enqueues the frame to a queue.
 // That queue does 2 things:
 // - If timeUs >= expected: Run the callback function
 // - Else: Sleep until the expected timeUs
-void M_Enqueue(
-        M_AFrameQueue& queue,
+void E_Enqueue(
+        E_AACFrameQueue& queue,
         const byte_t* data,
         sz_t size,
         tm_t timeUs,

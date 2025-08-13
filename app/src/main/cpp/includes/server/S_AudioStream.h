@@ -1,8 +1,10 @@
 #pragma once
 
-#include "media/M_AudioSource.h"
+#include "encoder/E_AAC.h"
 #include "server/S_Platform.h"
+#include "server/S_StreamState.h"
 #include "utils/StreamStats.h"
+
 
 typedef struct {
     // Double buffer
@@ -34,22 +36,20 @@ typedef struct {
     a_int_t read_idx;
 
     // Threading
-    // Idle: recording false, stopping false
-    // Start: recording true, stopping false
-    // Stop: recording true, stopping true
-    // Stopped: recording false, stopping false
     thread_t thread;
-    a_bool_t is_running;
-    a_bool_t is_stopping;
 
-    // Data source
-    M_AudioSource* audio_source;
-} S_AudioStream;
+    // Status
+    a_int_t state;
 
-void S_Init(S_AudioStream& stream, M_AudioSource* audio_source);
-void S_Start(S_AudioStream& stream,
+    // Encoder
+    E_AAC* encoder;
+} S_AACStream;
+
+void S_Init(S_AACStream& stream, E_AAC* encoder);
+void S_Prepare(S_AACStream& stream);
+void S_Start(S_AACStream& stream,
              CancellableSocket* socket,
              byte_t interleave,
              int_t ssrc);
-void S_Stop(S_AudioStream& stream);
-bool_t S_IsRunning(const S_AudioStream& stream);
+void S_Stop(S_AACStream& stream);
+bool_t S_IsRunning(const S_AACStream& stream);

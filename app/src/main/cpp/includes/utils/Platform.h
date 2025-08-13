@@ -52,7 +52,15 @@ static inline bool Load(const a_bool_t* value) {
     return atomic_load(value);
 }
 
-static inline void Store(a_bool_t* value, bool val) {
+static inline int_t Load(const a_int_t* value) {
+    return atomic_load(value);
+}
+
+static inline void Store(a_bool_t* value, bool_t val) {
+    atomic_store(value, val);
+}
+
+static inline void Store(a_int_t* value, int_t val) {
     atomic_store(value, val);
 }
 
@@ -64,7 +72,11 @@ static inline void Reset(a_int_t* value) {
     atomic_init(value, 0);
 }
 
-static inline int SyncAndGet(a_int_t* value) {
+static inline bool_t CompareAndSet(a_int_t* value, int old_val, int new_val) {
+    return atomic_compare_exchange_strong(value, &old_val, new_val);
+}
+
+static inline int_t SyncAndGet(a_int_t* value) {
     return atomic_load_explicit(value, memory_order_acquire);
 }
 

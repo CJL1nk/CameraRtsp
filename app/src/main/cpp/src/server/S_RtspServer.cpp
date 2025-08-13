@@ -10,17 +10,17 @@ static void Reset(S_RtspServer& server) {
 }
 
 void S_Init(S_RtspServer& server,
-            M_VideoSource* video_source,
-            M_AudioSource* audio_source) {
+            E_H265* video_encoder,
+            E_AAC* audio_encoder) {
 
     // Initialize clients
     for (auto& client: server.clients) {
-        S_Init(client, &server.media, audio_source, video_source);
+        S_Init(client, &server.media, video_encoder, audio_encoder);
     }
 
     // Initialize media
-    server.media.video_source = video_source;
-    server.media.audio_source = audio_source;
+    server.media.video_encoder = video_encoder;
+    server.media.audio_encoder = audio_encoder;
 
     // Initialize threading
     Init(&server.thread);

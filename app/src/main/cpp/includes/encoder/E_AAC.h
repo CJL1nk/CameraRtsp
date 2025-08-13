@@ -1,17 +1,19 @@
 #pragma once
 
-#include "media/M_AFrameQueue.h"
-#include "media/M_Platform.h"
+#include "encoder/E_Platform.h"
+#include "encoder/E_AACFrameQueue.h"
+#include "mediasource/M_AudioSource.h"
+#include "utils/CircularDeque.h"
 #include "utils/Configs.h"
 #include "utils/FrameBuffer.h"
 #include "utils/Platform.h"
 
-typedef void (*M_AEncodedCallback)(void *context, const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &);
+typedef void (*E_AACFrameCallback)(void *context, const FrameBuffer<MAX_AUDIO_FRAME_SIZE> &);
 
 typedef struct {
-    M_AEncodedCallback callback;
+    E_AACFrameCallback callback;
     void *context;
-} M_AEncodedListener;
+} E_AACFrameListener;
 
 typedef CircularDeque<byte_t, MAX_AUDIO_RECORD_SIZE * 2> RecordBuffer;
 
@@ -24,19 +26,19 @@ typedef struct {
     lock_t buffer_lock;
 
     // Frame queue
-    M_AFrameQueue queue;
-    M_AQueueCb queue_cb;
+    E_AACFrameQueue queue;
+    E_AACQueueCb queue_cb;
 
     // Frame available listeners
     lock_t listener_lock;
-    M_AEncodedListener listeners[MAX_AUDIO_LISTENER];
-
-    // AAudio stream
-    M_AStream *stream;
+    E_AACFrameListener listeners[MAX_AAC_LISTENER];
 
     // Media codec for AAC encoding
-    M_Codec *encoder;
-    M_Format *format;
+    E_Codec *codec;
+    E_Format *format;
+
+    // Audio source
+    M_AudioSource *source;
 
     // Threading
     // Idle: recording false, stopping false
@@ -47,10 +49,12 @@ typedef struct {
     a_bool_t is_recording;
     a_bool_t is_stopping;
     thread_t thread;
-} M_AudioSource;
+} E_AAC;
 
-void M_Init(M_AudioSource &source);
-void M_Start(M_AudioSource &source);
-void M_Stop(M_AudioSource &source);
-bool M_AddListener(M_AudioSource &source, M_AEncodedCallback callback, void *ctx);
-bool M_RemoveListener(M_AudioSource &source, void *ctx);
+void E_Init(E_AAC &encoder, M_AudioSource *source);
+void E_Start(E_AAC &encoder);
+void E_Stop(E_AAC &encoder);
+bool E_AddListener(E_AAC &encoder,
+                   E_AACFrameCallback callback,
+                   void *ctx);
+bool E_RemoveListener(E_AAC &encoder, void *ctx);

@@ -11,14 +11,16 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
 
 add_library(${CMAKE_PROJECT_NAME} SHARED
         src/main.cpp
+        src/encoder/E_AAC.cpp
+        src/encoder/E_AACFrameQueue.cpp
+        src/encoder/E_H265.cpp
+        src/mediasource/M_AudioSource.cpp
+        src/mediasource/M_VideoSource.cpp
         src/server/S_RtspClient.cpp
         src/server/S_RtspServer.cpp
         src/server/S_RtpSession.cpp
         src/server/S_VideoStream.cpp
         src/server/S_AudioStream.cpp
-        src/media/M_AFrameQueue.cpp
-        src/media/M_AudioSource.cpp
-        src/media/M_VideoSource.cpp
         src/utils/Utils.cpp
         src/utils/Packetizer.cpp
         src/utils/StreamStats.cpp

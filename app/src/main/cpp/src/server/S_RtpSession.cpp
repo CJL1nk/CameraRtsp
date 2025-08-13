@@ -1,9 +1,11 @@
 #include "server/S_RtpSession.h"
 #include "utils/Platform.h"
 
-void S_Init(S_RtpSession& session, M_AudioSource* audio_source, M_VideoSource* video_source) {
-    S_Init(session.audio_stream, audio_source);
-    S_Init(session.video_stream, video_source);
+void S_Init(S_RtpSession& session,
+            E_H265* video_encoder,
+            E_AAC* audio_encoder) {
+    S_Init(session.audio_stream, audio_encoder);
+    S_Init(session.video_stream, video_encoder);
 }
 
 void S_Start(S_RtpSession& session,
@@ -22,6 +24,17 @@ void S_Start(S_RtpSession& session,
                 socket,
                 audio_interleave,
                 RandomInt());
+    }
+}
+
+void S_Prepare(S_RtpSession& session,
+               bool_t video,
+               bool_t audio) {
+    if (video) {
+        S_Prepare(session.video_stream);
+    }
+    if (audio) {
+        S_Prepare(session.audio_stream);
     }
 }
 

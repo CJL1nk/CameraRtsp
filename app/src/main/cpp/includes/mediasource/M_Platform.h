@@ -1,99 +1,12 @@
 #pragma once
 
 #include <aaudio/AAudio.h>
-#include <media/NdkMediaCodec.h>
-#include <media/NdkMediaFormat.h>
 #include <camera/NdkCameraManager.h>
 #include <media/NdkImageReader.h>
 
 #include "utils/Platform.h"
 
-/* Media */
-
 #define M_RESULT_OK 0
-
-#define M_CODEC_CONFIGURE_ENCODE 1
-#define M_KEY_MIME "mime"
-#define M_KEY_SAMPLE_RATE "sample-rate"
-#define M_KEY_CHANNEL_COUNT "channel-count"
-#define M_KEY_BIT_RATE "bitrate"
-#define M_KEY_AAC_PROFILE "aac-profile"
-#define M_KEY_MAX_INPUT_SIZE "max-input-size"
-#define M_KEY_WIDTH "width"
-#define M_KEY_HEIGHT "height"
-#define M_KEY_COLOR_FORMAT "color-format"
-#define M_KEY_I_FRAME_INTERVAL "i-frame-interval"
-#define M_KEY_FRAME_RATE "frame-rate"
-#define M_KEY_PROFILE "profile"
-#define M_KEY_LEVEL "level"
-
-#define M_INFO_FLAG_KEY_FRAME 1
-#define M_INFO_FLAG_CODEC_CONFIG 2
-#define M_INFO_FLAG_END_OF_STREAM 4
-
-typedef AMediaCodec M_Codec;
-typedef AMediaFormat M_Format;
-typedef ANativeWindow M_Window;
-typedef AMediaCrypto M_Crypto;
-typedef AMediaCodecBufferInfo M_BufferInfo;
-typedef int_t result_t;
-
-static inline M_Codec* M_CreateEncoder(const char* mime_type) {
-    return AMediaCodec_createEncoderByType(mime_type);
-}
-static inline M_Format* M_NewFormat() {
-    return AMediaFormat_new();
-}
-static inline void M_SetString(M_Format* format, const char* name, const char* value) {
-    AMediaFormat_setString(format, name, value);
-}
-static inline void M_SetInt32(M_Format* format, const char* name, int_t value) {
-    AMediaFormat_setInt32(format, name, value);
-}
-static inline result_t M_Configure(
-        M_Codec* codec,
-        M_Format* format,
-        M_Window* surface,
-        M_Crypto* crypto,
-        int_t flags) {
-    return AMediaCodec_configure(codec, format, surface, crypto, flags);
-}
-static inline result_t M_Start(M_Codec* codec) {
-    return AMediaCodec_start(codec);
-}
-static inline result_t M_Stop(M_Codec* codec) {
-    return AMediaCodec_stop(codec);
-}
-static inline void M_Delete(M_Codec* codec) {
-    AMediaCodec_delete(codec);
-}
-static inline void M_Delete(M_Format* format) {
-    AMediaFormat_delete(format);
-}
-static inline ssz_t M_DequeueInput(M_Codec* codec, tm_t timeoutUs) {
-    return AMediaCodec_dequeueInputBuffer(codec, timeoutUs);
-}
-static inline byte_t* M_InputBuffer(M_Codec* codec, sz_t idx, sz_t* out_size) {
-    return AMediaCodec_getInputBuffer(codec, idx, out_size);
-}
-static inline result_t M_QueueInput(
-        M_Codec* codec,
-        sz_t idx,
-        sz_t offset,
-        sz_t size,
-        tm_t time,
-        int_t flags) {
-    return AMediaCodec_queueInputBuffer(codec, idx, offset, size, time, flags);
-}
-static inline ssz_t M_DequeueOutput(M_Codec* codec, M_BufferInfo* info, tm_t timeoutUs) {
-    return AMediaCodec_dequeueOutputBuffer(codec, info, timeoutUs);
-}
-static inline byte_t* M_OutputBuffer(M_Codec* codec, sz_t idx, sz_t* out_size) {
-    return AMediaCodec_getOutputBuffer(codec, idx, out_size);
-}
-static inline result_t M_ReleaseOutput(M_Codec* codec, sz_t idx, bool_t render) {
-    return AMediaCodec_releaseOutputBuffer(codec, idx, render);
-}
 
 /* Audio */
 
@@ -105,6 +18,7 @@ static inline result_t M_ReleaseOutput(M_Codec* codec, sz_t idx, bool_t render) 
 
 typedef AAudioStream M_AStream;
 typedef AAudioStreamBuilder M_ABuilder;
+typedef int_t result_t;
 
 typedef result_t (*M_ADataCallback)(
         M_AStream *stream,
@@ -155,7 +69,6 @@ static inline result_t M_Close(M_AStream* stream) {
 
 #define M_TEMPLATE_PREVIEW 1
 #define M_FORMAT_YUV_420_888 0x23
-#define M_COLOR_FORMAT_SURFACE 0x7F000789
 
 typedef ACameraManager M_CManager;
 typedef ACameraDevice M_CDevice;
@@ -167,6 +80,7 @@ typedef ACaptureSessionOutput M_COutput;
 typedef ACaptureSessionOutputContainer M_CContainer;
 typedef AImageReader M_ImageReader;
 typedef AImage M_Image;
+typedef ANativeWindow M_Window;
 
 typedef struct M_CStateCallbacks {
     void *context;
@@ -206,9 +120,6 @@ static inline result_t M_CreateRequest(
 }
 static inline void M_FreeRequest(M_CRequest *request) {
     ACaptureRequest_free(request);
-}
-static inline result_t M_CreateSurface(M_Codec *codec, M_Window **surface) {
-    return AMediaCodec_createInputSurface(codec, surface);
 }
 static inline result_t M_SetFpsRange(M_CRequest *request, const int_t *range) {
     return ACaptureRequest_setEntry_i32(request, ACAMERA_CONTROL_AE_TARGET_FPS_RANGE, 2, range);
@@ -283,7 +194,4 @@ static inline result_t M_AcquireImage(M_ImageReader *reader, M_Image **image) {
 }
 static inline void M_DeleteImage(M_Image *image) {
     AImage_delete(image);
-}
-static inline result_t M_SignalEOS(M_Codec *codec) {
-    return AMediaCodec_signalEndOfInputStream(codec);
 }

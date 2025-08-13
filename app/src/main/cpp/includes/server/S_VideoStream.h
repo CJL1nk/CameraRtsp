@@ -1,7 +1,8 @@
 #pragma once
 
-#include "media/M_VideoSource.h"
+#include "encoder/E_H265.h"
 #include "server/S_Platform.h"
+#include "server/S_StreamState.h"
 #include "utils/StreamStats.h"
 
 typedef struct {
@@ -37,19 +38,17 @@ typedef struct {
     a_int_t read_idx;
 
     // Threading
-    // Idle: recording false, stopping false
-    // Start: recording true, stopping false
-    // Stop: recording true, stopping true
-    // Stopped: recording false, stopping false
     thread_t thread;
-    a_bool_t is_running;
-    a_bool_t is_stopping;
 
-    // Data source
-    M_VideoSource* video_source;
+    // Status
+    a_int_t state;
+
+    // Encoder
+    E_H265* encoder;
 } S_VideoStream;
 
-void S_Init(S_VideoStream& stream, M_VideoSource* video_source);
+void S_Init(S_VideoStream& stream, E_H265* encoder);
+void S_Prepare(S_VideoStream& stream);
 void S_Start(S_VideoStream& stream,
              CancellableSocket* socket,
              byte_t interleave,

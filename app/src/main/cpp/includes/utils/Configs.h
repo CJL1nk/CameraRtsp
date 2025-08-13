@@ -7,7 +7,8 @@
 #define MAX_AUDIO_RECORD_SAMPLE 4096
 #define SIZE_PER_SAMPLE (sizeof(int16_t) * AUDIO_CHANNEL_COUNT)
 #define MAX_AUDIO_RECORD_SIZE (MAX_AUDIO_RECORD_SAMPLE * SIZE_PER_SAMPLE)
-#define MAX_AUDIO_LISTENER 1
+#define MAX_AUDIO_LISTENER 2 // 1 for encoder, 1 for reader
+#define MAX_AAC_LISTENER 1
 
 // Video record config
 #define VIDEO_WIDTH 1280
@@ -15,7 +16,8 @@
 #define VIDEO_DEFAULT_FRAME_RATE 30 // Query camera_id supported frame rate
 #define VIDEO_MIN_FRAME_RATE 15     // Query camera_id supported frame rate
 #define CAMERA_ID "0"
-#define MAX_VIDEO_LISTENER 1
+#define MAX_VIDEO_LISTENER 2 // 1 for encoder, 1 for reader
+#define MAX_H265_LISTENER 1
 #define IMAGE_READER_CACHE_SIZE 1
 
 // Audio encoder config

@@ -51,19 +51,29 @@ static void Reset(S_VideoStream& stream) {
 }
 
 // Attributes that are only initialized once per app cycle.
-void S_Init(S_VideoStream& stream, M_VideoSource* video_source) {
-    if (!video_source) {
+void S_Init(S_VideoStream& stream, E_H265* encoder) {
+    if (!encoder) {
         return;
     }
 
     Init(&stream.frame_mutex);
     Init(&stream.frame_condition);
-    Init(&stream.thread);
-    Init(&stream.is_stopping);
-    Init(&stream.is_running);
 
-    stream.video_source = video_source;
+    Init(&stream.thread);
+
+    Store(&stream.state, IDLE);
+
+    stream.encoder = encoder;
+
     Init(stream.stats, true);
+}
+
+void S_Prepare(S_VideoStream& stream) {
+    if (!CompareAndSet(&stream.state, IDLE, PREPARED))  {
+        return;
+    }
+    // Add encoder listener
+    E_AddListener(*stream.encoder, FrameCallback, &stream);
 }
 
 void S_Start(
@@ -72,12 +82,8 @@ void S_Start(
         byte_t interleave,
         int_t ssrc) {
 
-    if (Load(&stream.is_stopping)) {
+    if (!CompareAndSet(&stream.state, PREPARED, RECORD))  {
         return;
-    }
-
-    if (GetAndSet(&stream.is_running, true)) {
-        return; // Already running
     }
 
     Reset(stream);
@@ -89,33 +95,50 @@ void S_Start(
     Start(&stream.thread, StartStreamingThread, &stream);
 }
 
-static void MarkStopped(S_VideoStream& stream) {
-    Store(&stream.is_running, false);
-    Store(&stream.is_stopping, false);
+static void MarkIdle(S_VideoStream& stream) {
+    Store(&stream.state, IDLE);
 }
 
 void S_Stop(S_VideoStream& stream) {
-    if (!Load(&stream.is_running)) {
-        return;
+    bool_t is_prepared = false;
+    bool_t is_recording = false;
+
+    if (CompareAndSet(&stream.state, RECORD, STOPPING)) {
+        is_recording = true;
+        is_prepared = true;
     }
-    if (GetAndSet(&stream.is_stopping, true)) {
-        return;
+
+    if (CompareAndSet(&stream.state, PREPARED, STOPPING)) {
+        is_prepared = true;
     }
-    
-    Signal(&stream.frame_condition);
-    Join(&stream.thread);
-    MarkStopped(stream);
+
+    if (is_recording) {
+        // Wait for streaming thread to stop
+        Signal(&stream.frame_condition);
+        Join(&stream.thread);
+    }
+
+    if (is_prepared) {
+        // Remove encoder listener
+        E_RemoveListener(*stream.encoder, &stream);
+    }
+
+    if (is_recording || is_prepared) {
+        LOGI("CleanUp", "gracefully clean up video stream");
+        MarkIdle(stream);
+    }
 }
 
+// From outside perspective, PREPARED, RECORD and STOPPED is the same as RUNNING
 bool_t S_IsRunning(const S_VideoStream& stream) {
-    return Load(&stream.is_running);
+    return Load(&stream.state) != IDLE;
 }
 
 static void ProcessFrame(S_VideoStream& stream, const FrameBuffer<MAX_VIDEO_FRAME_SIZE>& frame) {
 
     int index = 1 - SyncAndGet(&stream.read_idx);
     
-    if (frame.flags & M_INFO_FLAG_KEY_FRAME) {
+    if (frame.flags & E_INFO_FLAG_KEY_FRAME) {
         stream.keyframe_buffer[index] = frame;
         stream.frame_ready[index] = IFRAME;
 
@@ -164,7 +187,7 @@ static bool_t Wait(
 
         new_frame = stream.last_time_us < buffer_time &&
                     stream.keyframe_buffer[write_old].size > 0;
-        stopping = Load(&stream.is_stopping);
+        stopping = Load(&stream.state) == STOPPING;
         if (new_frame || stopping) {
             break;
         }
@@ -183,7 +206,7 @@ static bool_t Wait(
 
     // Second loop, wait for writer update write_idx
     while (true) {
-        stopping = Load(&stream.is_stopping);
+        stopping = Load(&stream.state) == STOPPING;
         write_new = SyncAndGet(&stream.write_idx);
         if (write_old != write_new || stopping) {
             break;
@@ -203,7 +226,9 @@ static bool_t Wait(
 }
 
 static void StartStreaming(S_VideoStream& stream) {
-    M_AddListener(*stream.video_source, FrameCallback, &stream);
+    SetThreadName("VideoStream");
+
+    E_AddListener(*stream.encoder, FrameCallback, &stream);
 
     FrameBuffer<MAX_VIDEO_FRAME_SIZE>* keyframe;
     FrameBuffer<NORMAL_VIDEO_FRAME_SIZE>* frame;
@@ -213,7 +238,7 @@ static void StartStreaming(S_VideoStream& stream) {
     bool_t success = true;
 
     // Wait -> SendAndAdvance -> PacketizeAndSend
-    while (!Load(&stream.is_stopping)) {
+    while (Load(&stream.state) == RECORD) {
         
         stopping = Wait(stream, type, keyframe, frame);
         if (stopping) {
@@ -253,9 +278,6 @@ static void StartStreaming(S_VideoStream& stream) {
             break;
         }
     }
-
-    M_RemoveListener(*stream.video_source, &stream);
-    LOGI("CleanUp", "gracefully clean up video stream");
 }
 
 static void* StartStreamingThread(void* arg) {
@@ -347,7 +369,7 @@ static int_t PacketizeAndSend(
         const NalUnit& nal = nals[i];
 
         offset = nal.start;
-        stopping = Load(&stream.is_stopping);
+        stopping = Load(&stream.state) == STOPPING;
         while (!stopping && offset < nal.end) {
 
             ResumeProcess(stream.stats);

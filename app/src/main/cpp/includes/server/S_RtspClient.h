@@ -1,7 +1,5 @@
 #pragma once
 
-#include "media/M_AudioSource.h"
-#include "media/M_VideoSource.h"
 #include "utils/Configs.h"
 #include "utils/Platform.h"
 #include "server/S_Platform.h"
@@ -12,8 +10,8 @@ struct S_RtspMedia {
     int_t audio_idx;
     int_t video_interleave;
     int_t audio_interleave;
-    M_VideoSource* video_source;
-    M_AudioSource* audio_source;
+    E_H265* video_encoder;
+    E_AAC* audio_encoder;
 };
 
 struct S_RtspClient {
@@ -30,8 +28,8 @@ struct S_RtspClient {
 
 void S_Init(S_RtspClient& client,
             S_RtspMedia* media,
-            M_AudioSource* audio_source,
-            M_VideoSource* video_source);
+            E_H265* video_encoder,
+            E_AAC* audio_encoder);
 
 int_t S_Accept(S_RtspClient& client, const CancellableSocket& server_socket);
 

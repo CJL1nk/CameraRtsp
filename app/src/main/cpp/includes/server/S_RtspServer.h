@@ -1,7 +1,5 @@
 #pragma once
 
-#include "media/M_AudioSource.h"
-#include "media/M_VideoSource.h"
 #include "utils/Configs.h"
 #include "utils/Platform.h"
 #include "server/S_Platform.h"
@@ -20,7 +18,7 @@ struct S_RtspServer {
 
 void S_Init(
         S_RtspServer& server,
-        M_VideoSource* video_source,
-        M_AudioSource* audio_source);
+        E_H265* video_encoder,
+        E_AAC* audio_encoder);
 void S_Start(S_RtspServer& server, bool_t start_video, bool_t start_audio);
 void S_Stop(S_RtspServer& server);
