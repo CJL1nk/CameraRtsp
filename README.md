@@ -45,7 +45,7 @@ You should use Android APIs (just ask ChatGPT to generate the code) to find whic
 
 Android: Start the app -> Click "Start".
 
-PC or any other devices: Use VLC/ffmpeg -> open stream rtps://<Android-ip>:8554/stream.
+PC or any other devices: Use VLC/ffmpeg -> open stream rtsp://\<Android-ip\>:8554/stream.
 
 ### Connections
 I highly recommend using [Tailscale](https://tailscale.com/) to create a VPN between your devices. After that, you can use the Tailscale's IP to connect. 
