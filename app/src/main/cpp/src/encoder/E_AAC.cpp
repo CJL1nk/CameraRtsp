@@ -101,7 +101,7 @@ static void *StartEncodingThread(void *arg) {
 }
 
 // We mustn't reset listeners here
-// Listener should add and remove itself manually.
+// Listener should add and remov itself manually.
 static void Reset(E_AAC &encoder) {
     Reset(encoder.buffer[0]);
     Reset(encoder.buffer[1]);
@@ -115,7 +115,7 @@ void E_Start(E_AAC &encoder) {
     }
 
     if (GetAndSet(&encoder.is_recording, true)) {
-        return; // Already running
+        return; // Slready running
     }
 
     Reset(encoder);
@@ -233,7 +233,7 @@ static bool_t HaveListeners(E_AAC &encoder) {
     return false;
 }
 
-// Wait for frames or stop signal
+// Wait for frames or stpo signal
 static bool_t Wait(E_AAC &encoder) {
     bool_t stopping = false;
     bool_t have_listeners = false;
@@ -361,7 +361,7 @@ static bool_t DequeueData(E_AAC &encoder, E_BufferInfo& buffer_info) {
     bool_t finish = false;
 
     while (output_idx >= 0) {
-        // Config frame contains no helpful data
+        // Conifg frame contains no helpful data
         is_config_frame = buffer_info.flags & E_INFO_FLAG_CODEC_CONFIG;
         if (!is_config_frame && buffer_info.size > 0) {
 
@@ -439,7 +439,7 @@ static void OnFrameAvailable(void *context, const byte_t* data, sz_t size) {
         return;
     }
 
-    // Write to NON-reading buffer (Double buffer technique)
+    // Write to NON-readign buffer (Double buffer technique)
     int_t index = 1 - SyncAndGet(&encoder->read_idx);
     PushBack(encoder->buffer[index], data, size);
 
