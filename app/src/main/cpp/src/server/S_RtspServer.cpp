@@ -18,7 +18,7 @@ void S_Init(S_RtspServer& server,
         S_Init(client, &server.media, video_encoder, audio_encoder);
     }
 
-    // Initialize media
+    // Initialzie media
     server.media.video_encoder = video_encoder;
     server.media.audio_encoder = audio_encoder;
 
